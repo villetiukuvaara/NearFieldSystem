@@ -1,5 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
+from enum import Enum
+import util
+import re
 
 class HelloPackage:                            # not a widget subbclass
     def __init__(self, parent=None):
@@ -32,6 +35,9 @@ class HelloPackage:                            # not a widget subbclass
         print('Hello number', self.data)
         
 class MotionTab(tk.Frame):
+    
+    REGION_TYPE = {'STEP':'Number of steps', 'POINT':'Number of points'}
+    
     def __init__(self, parent=None):
         tk.Frame.__init__(self, parent)             # do superclass init
         self.pack()
@@ -50,39 +56,75 @@ class MotionTab(tk.Frame):
         tk.Button(joystick_group,text="Z up").grid(row=1,column=4)
         tk.Button(joystick_group,text="Z down").grid(row=3,column=4)
         
-        tk.Label(move_group,text="Speed").pack(side=LEFT)
+        tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
         tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL).pack(side=tk.LEFT)
         
-        config_region_group = tk.LabelFrame(self, text="Configure Region")
+        config_region_group = tk.LabelFrame(self, text="Configure Region");
         config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT)
         
-        tk.Label(config_region_group,text="X axis").grid(row=1,column=2)
-        tk.Label(config_region_group,text="Y axis").grid(row=1,column=3)
-        tk.Label(config_region_group,text="Z axis").grid(row=1,column=4)
-        tk.Label(config_region_group,text="Start").grid(row=2,column=1)
-        tk.Label(config_region_group,text="Stop").grid(row=3,column=1)
-        tk.Label(config_region_group,text="Steps").grid(row=4,column=1)
+        config_type_group = tk.Frame(config_region_group)
+        config_type_group.pack(side=tk.TOP)
         
-        self.start_x_entry = tk.Entry(config_region_group)
+        
+        self.region_type = tk.StringVar()
+        self.region_type.set(list(MotionTab.REGION_TYPE.keys())[0])
+        for [key,val] in MotionTab.REGION_TYPE.items():
+            tk.Radiobutton(config_type_group, text=val, variable=self.region_type,
+                           value=key,command=self.change_region_type).pack(side=tk.TOP)
+        
+        # Frame with start, stop, step values entry
+        config_vals_group = tk.Frame(config_region_group)
+        config_vals_group.pack(side=tk.BOTTOM);
+        
+        tk.Label(config_vals_group,text="X axis").grid(row=1,column=2)
+        tk.Label(config_vals_group,text="Y axis").grid(row=1,column=3)
+        tk.Label(config_vals_group,text="Z axis").grid(row=1,column=4)
+        tk.Label(config_vals_group,text="Start").grid(row=2,column=1)
+        tk.Label(config_vals_group,text="Stop").grid(row=3,column=1)
+        self.steps_label = tk.Label(config_vals_group,text="Steps")
+        longest_string = max(MotionTab.REGION_TYPE.values(),key=len)
+        self.steps_label.config(width=len(longest_string))
+        self.steps_label.grid(row=4,column=1)
+        
+        
+        # Configure validation of position number entries
+        vcmd = (self.register(self.validate_position),
+                '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
+        
+        
+        self.start_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.start_x_entry.grid(row=2,column=2)
-        self.stop_x_entry = tk.Entry(config_region_group)
+        self.stop_x_entry = tk.Entry(config_vals_group)
         self.stop_x_entry.grid(row=3,column=2)
-        self.step_x_entry = tk.Entry(config_region_group)
+        self.step_x_entry = tk.Entry(config_vals_group)
         self.step_x_entry.grid(row=4,column=2)
         
-        self.start_y_entry = tk.Entry(config_region_group)
+        self.start_y_entry = tk.Entry(config_vals_group)
         self.start_y_entry.grid(row=2,column=3)
-        self.stop_y_entry = tk.Entry(config_region_group)
+        self.stop_y_entry = tk.Entry(config_vals_group)
         self.stop_y_entry.grid(row=3,column=3)
-        self.step_y_entry = tk.Entry(config_region_group)
-        self.step_y_entry.grid(row=4,column=3)
+        self.step_y_entry = tk.Entry(config_vals_group)
+        self.step_y_entry.grid(row=4,column=3)s
         
-        self.start_z_entry = tk.Entry(config_region_group)
+        self.start_z_entry = tk.Entry(config_vals_group)
         self.start_z_entry.grid(row=2,column=4)
-        self.stop_z_entry = tk.Entry(config_region_group)
+        self.stop_z_entry = tk.Entry(config_vals_group)
         self.stop_z_entry.grid(row=3,column=4)
-        self.step_z_entry = tk.Entry(config_region_group)
+        self.step_z_entry = tk.Entry(config_vals_group)
         self.step_z_entry.grid(row=4,column=4)
+        
+    def change_region_type(self):
+        for key,val in MotionTab.REGION_TYPE.items():
+            util.dprint('{} {}'.format(self.region_type.get(), key))
+            if self.region_type.get() == key:
+                self.steps_label.config(text=val)
+                return
+            
+    def validate_position(self, d, i, P, s, S, v, V, W):
+        return re.match(P,"^[0-9]*\.?[0-9]*")
+        
+ #   def update_values(self):
+        
         
         #tk.Label(joystick_group,text="").pack()
         
@@ -93,4 +135,5 @@ class MotionTab(tk.Frame):
 
 
 if __name__ == '__main__':
+    util.debug_messages = True
     HelloPackage().win.mainloop()
