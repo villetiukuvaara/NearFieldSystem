@@ -2,6 +2,13 @@
 
 import gclib
 import util
+from enum import Enum
+
+class Motor(Enum):
+    X = 'A'
+    Y1 = 'B'
+    Y2 = 'C'
+    Z = 'D'
 
 class DMC(object):
     def __init__(self, ip_address):
@@ -21,11 +28,11 @@ class DMC(object):
         
     def disable_motors(self, motor_list):
         for m in motor_list:
-            self.send_command('MO{}'.format(m));
+            self.send_command('MO{}'.format(m.value));
     
     def enable_motors(self, motor_list):
         for m in motor_list:
-            self.send_command('SH{}'.format(m));
+            self.send_command('SH{}'.format(m.value));
     
     def configure(self):
         m = self.disable_motors(['A', 'B,', 'C', 'D']);
@@ -47,6 +54,21 @@ class DMC(object):
         #self.enable_motors(['A', 'B,', 'C', 'D']);
         #self.enable_motors(['A']);
     
+    def set_speed(self):
+        
+    
+    def get_position(self):
+        x = self.send_command('MG_TP{}'.format(Motor.X.value))
+        y = self.send_command('MG_TP{}'.format(Motor.Y1.value))
+        z = self.send_command('MG_TP{}'.format(Motor.Z.value))
+        return [x, y, z];
+    
+    
+    
+    def move_absolulute(self, dist):
+        
+        
+    def move_relative(self, motor, dist):
 
 if __name__ == "__main__":
     util.debug_messages = True
