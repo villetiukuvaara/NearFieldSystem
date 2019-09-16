@@ -3,21 +3,19 @@ from tkinter import ttk
 from enum import Enum
 import util
 import re
+from DMC import *
 
-class HelloPackage:                            # not a widget subbclass
+class NearFieldGUI:                            # not a widget subbclass
     def __init__(self, parent=None):
         self.win = tk.Tk()
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
+        self.dmc = DMC('134.117.39.229', True)
         self.make_widgets()
-        #self.
-        #self.top.pack()
-        #self.data = 0
-        #self.make_widgets()                    # attach widgets to self.top
 
     def make_widgets(self):
         self.tabs = ttk.Notebook(self.win)
-        self.motion_tab = MotionTab(self.tabs)
+        self.motion_tab = MotionTab(self.tabs, self.dmc)
         self.vna_tab = ttk.Frame(self.tabs)
         self.measure_tab = ttk.Frame(self.tabs)
         self.results_tab = ttk.Frame(self.tabs)
@@ -36,10 +34,21 @@ class HelloPackage:                            # not a widget subbclass
         
 class MotionTab(tk.Frame):
     
-    REGION_TYPE = {'STEP':'Number of steps', 'POINT':'Number of points'}
+    REGION_TYPE = {'points':'Number of points', 'step':'Step size'}
+    POS_LENGTH = 5 # Number of digits before . for positions
+    POS_PRECISION = 5 # Number of digits after . for positions
+    STEP_LENGTH = 3 # Number of digits before . for steps
+    STEP_PRECISION = 5 # Number of digits after . for steps
+    MAX_STEPS = 999 # Maximum number of steps
     
-    def __init__(self, parent=None):
+    AXES = ['X', 'Y', 'Z']
+    # DEFAULT_VALS[AXIS][POS]
+    DEFAULT_VALS = {'X':[0,5,100], 'Y':[0,5,100], 'Z':[0,5,1]}
+    FORMAT = ['{:.0f}', '{:.0f}', '{:.0f}']
+    
+    def __init__(self, parent=None, dmc=None):
         tk.Frame.__init__(self, parent)             # do superclass init
+        self.dmc = dmc
         self.pack()
         self.make_widgets()                      # attach widgets to self
         
@@ -76,9 +85,7 @@ class MotionTab(tk.Frame):
         config_vals_group = tk.Frame(config_region_group)
         config_vals_group.pack(side=tk.BOTTOM);
         
-        tk.Label(config_vals_group,text="X axis").grid(row=1,column=2)
-        tk.Label(config_vals_group,text="Y axis").grid(row=1,column=3)
-        tk.Label(config_vals_group,text="Z axis").grid(row=1,column=4)
+        # Labels for start, stop, step rows
         tk.Label(config_vals_group,text="Start").grid(row=2,column=1)
         tk.Label(config_vals_group,text="Stop").grid(row=3,column=1)
         self.steps_label = tk.Label(config_vals_group,text=list(MotionTab.REGION_TYPE.values())[0])
@@ -86,41 +93,63 @@ class MotionTab(tk.Frame):
         self.steps_label.config(width=len(longest_string))
         self.steps_label.grid(row=4,column=1)
         
-        
-        # Configure validation of position number entries
-        vcmd = (self.register(self.validate_position),
-                '%d', '%i', '%P', '%s', '%S', '%v', '%V', '%W')
-        
-        
-        self.start_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.start_x_entry.grid(row=2,column=2)
-        self.stop_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.stop_x_entry.grid(row=3,column=2)
-        self.step_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.step_x_entry.grid(row=4,column=2)
-        
-        self.start_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.start_y_entry.grid(row=2,column=3)
-        self.stop_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.stop_y_entry.grid(row=3,column=3)
-        self.step_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.step_y_entry.grid(row=4,column=3)
-        
-        self.start_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.start_z_entry.grid(row=2,column=4)
-        self.stop_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.stop_z_entry.grid(row=3,column=4)
-        self.step_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
-        self.step_z_entry.grid(row=4,column=4)
+        self.pos_strings = {}
+        self.entries = {}
+        for ax_n, ax in enumerate(AXES):
+            
+            # Labels for axis columns
+            tk.Label(config_vals_group,text="{} axis".format(ax)).grid(row=1,column=ax_n+2)
+            
+            for pos_n, pos in enumerate(['start','stop','step']):
+                self.pos_strings[(ax, pos)] = tk.StringVar()
+                self.pos_strings[(ax, pos)].set(
+                        MotionTab.FORMAT[pos_n].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
+                self.pos_strings[(ax, pos)] = tk.Entry(config_vals_group, textvariable=self.pos_strings[(ax, pos)], validate="key",
+                    validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
+                self.pos_strings[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
         
     def change_region_type(self):
         for key,val in MotionTab.REGION_TYPE.items():
             if self.region_type.get() == key:
                 self.steps_label.config(text=val)
-                return
             
-    def validate_position(self, d, i, P, s, S, v, V, W):
-        return re.match("^[0-9]*\.?[0-9]*$",P) is not None
+    def validate_entry(self, P, axis, pos):
+        if pos == 'step':
+            if self.region_type.get() == 'points':
+                m = re.match("^[0-9]*$", P)
+                try:
+                    return m is not None and float(m.group(0)) <= 9999
+                except ValueError:
+                    return len(m.group(0)) is 0
+            else:
+                m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
+                if m is None:
+                    return False
+                try:
+                    val = float(m.group(0))
+                    return abs(val) > 0.01 and len(m.group(0)) < 8 and len(m.group(2)) < 3
+                except ValueError:
+                    return len(m.group(0)) is 0
+        else:
+            m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
+            try:
+                return m is not None and len(m.group(0)) < 8 and len(m.group(2)) < 3
+            except ValueError:
+                return False
+        return False
+        
+    
+    # Returns (start, stop, n_points)
+    def get_region(self, axis):
+        p = ()
+        p[0] = float(self.pos_strings[(axis, 'start')])
+        p[1] = float(self.pos_strings[(axis, 'stop')])
+        
+        if(self.region_type == 'points'):
+            p[2] = float(self.pos_strings[(axis, 'step')])
+        else:
+            p[2] = (p(1)-p(0))/float(self.pos_strings[(axis, 'step')])
+        return p
         
  #   def update_values(self):
         
@@ -135,4 +164,4 @@ class MotionTab(tk.Frame):
 
 if __name__ == '__main__':
     util.debug_messages = True
-    HelloPackage().win.mainloop()
+    NearFieldGUI().win.mainloop()
