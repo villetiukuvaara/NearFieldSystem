@@ -9,9 +9,15 @@ class Motor(Enum):
     Y1 = 'B'
     Y2 = 'C'
     Z = 'D'
+    
+AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 
 class DMC(object):
-    def __init__(self, ip_address):
+    def __init__(self, ip_address, dummy):
+        self.dummy = dummy
+        if self.dummy:
+            return
+        
         self.g = gclib.py();
         print('gclib version:', self.g.GVersion())
         #self.g.GOpen('192.168.0.42 --direct -s ALL')
@@ -19,6 +25,8 @@ class DMC(object):
         print(self.g.GInfo())
     
     def __del__(self):
+        if self.dummy:
+            return
         info = self.g.GInfo();
         self.g.GClose()
         print('Closed connection to ' + info)
@@ -55,7 +63,7 @@ class DMC(object):
         #self.enable_motors(['A']);
     
     def set_speed(self):
-        
+        return True
     
     def get_position(self):
         x = self.send_command('MG_TP{}'.format(Motor.X.value))
@@ -63,14 +71,16 @@ class DMC(object):
         z = self.send_command('MG_TP{}'.format(Motor.Z.value))
         return [x, y, z];
     
-    
+    def max_position(self):
+        return [10, 20, 30];
     
     def move_absolulute(self, dist):
-        
+        return True
         
     def move_relative(self, motor, dist):
+        return True
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.229')
+    d = DMC('134.117.39.229', True)
     #d.configure();
