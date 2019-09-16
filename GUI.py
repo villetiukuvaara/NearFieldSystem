@@ -58,13 +58,13 @@ class MotionTab(tk.Frame):
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
         tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL).pack(side=tk.LEFT)
+        tk.Label(move_group,text="a").pack(side=tk.BOTTOM)
         
         config_region_group = tk.LabelFrame(self, text="Configure Region");
         config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT)
         
         config_type_group = tk.Frame(config_region_group)
         config_type_group.pack(side=tk.TOP)
-        
         
         self.region_type = tk.StringVar()
         self.region_type.set(list(MotionTab.REGION_TYPE.keys())[0])
@@ -81,7 +81,7 @@ class MotionTab(tk.Frame):
         tk.Label(config_vals_group,text="Z axis").grid(row=1,column=4)
         tk.Label(config_vals_group,text="Start").grid(row=2,column=1)
         tk.Label(config_vals_group,text="Stop").grid(row=3,column=1)
-        self.steps_label = tk.Label(config_vals_group,text="Steps")
+        self.steps_label = tk.Label(config_vals_group,text=list(MotionTab.REGION_TYPE.values())[0])
         longest_string = max(MotionTab.REGION_TYPE.values(),key=len)
         self.steps_label.config(width=len(longest_string))
         self.steps_label.grid(row=4,column=1)
@@ -94,34 +94,33 @@ class MotionTab(tk.Frame):
         
         self.start_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.start_x_entry.grid(row=2,column=2)
-        self.stop_x_entry = tk.Entry(config_vals_group)
+        self.stop_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.stop_x_entry.grid(row=3,column=2)
-        self.step_x_entry = tk.Entry(config_vals_group)
+        self.step_x_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.step_x_entry.grid(row=4,column=2)
         
-        self.start_y_entry = tk.Entry(config_vals_group)
+        self.start_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.start_y_entry.grid(row=2,column=3)
-        self.stop_y_entry = tk.Entry(config_vals_group)
+        self.stop_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.stop_y_entry.grid(row=3,column=3)
-        self.step_y_entry = tk.Entry(config_vals_group)
-        self.step_y_entry.grid(row=4,column=3)s
+        self.step_y_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
+        self.step_y_entry.grid(row=4,column=3)
         
-        self.start_z_entry = tk.Entry(config_vals_group)
+        self.start_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.start_z_entry.grid(row=2,column=4)
-        self.stop_z_entry = tk.Entry(config_vals_group)
+        self.stop_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.stop_z_entry.grid(row=3,column=4)
-        self.step_z_entry = tk.Entry(config_vals_group)
+        self.step_z_entry = tk.Entry(config_vals_group, validate="key", validatecommand=vcmd)
         self.step_z_entry.grid(row=4,column=4)
         
     def change_region_type(self):
         for key,val in MotionTab.REGION_TYPE.items():
-            util.dprint('{} {}'.format(self.region_type.get(), key))
             if self.region_type.get() == key:
                 self.steps_label.config(text=val)
                 return
             
     def validate_position(self, d, i, P, s, S, v, V, W):
-        return re.match(P,"^[0-9]*\.?[0-9]*")
+        return re.match("^[0-9]*\.?[0-9]*$",P) is not None
         
  #   def update_values(self):
         
