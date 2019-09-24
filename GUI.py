@@ -5,6 +5,7 @@ import util
 import re
 from DMC import *
 from motiontab import MotionTab
+from vnatab import VNATab
 
 class NearFieldGUI:                            # not a widget subbclass
     def __init__(self, parent=None):
@@ -19,7 +20,7 @@ class NearFieldGUI:                            # not a widget subbclass
     def make_widgets(self):
         self.tabs = ttk.Notebook(self.win)
         self.motion_tab = MotionTab(self.tabs, self.dmc)
-        self.vna_tab = ttk.Frame(self.tabs)
+        self.vna_tab = VNATab(self.tabs)
         self.measure_tab = ttk.Frame(self.tabs)
         self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")
