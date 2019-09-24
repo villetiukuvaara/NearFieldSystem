@@ -62,6 +62,13 @@ class DMC(object):
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
         
+        self.position_cnt = [0, 0, 0]
+        self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
+        self.stop_code = [StopCode.NONE for a in AXES]
+        self.status = Status.STOP
+        self.error_msg = ""
+        self.done = True
+        
         if self.dummy:
             #self.task = DMCDummyTask(self)
             return
@@ -120,20 +127,11 @@ class DMC(object):
         # Set control loop rate in units of 1/microseconds
         self.send_command("TM 1000")
         
-        self.jogging = False
-        
         self.set_speed(5)
         self.set_acceleration(5)
         self.set_decceleration(5)
         
         self.enable_motors();
-        
-        self.position_cnt = [0, 0, 0]
-        self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
-        self.stop_code = [StopCode.NONE for a in AXES]
-        self.status = Status.STOP
-        self.error_msg = ""
-        self.done = True
         
         util.dprint("Motors configured")
     
