@@ -7,11 +7,13 @@ from DMC import *
 
 class NearFieldGUI:                            # not a widget subbclass
     def __init__(self, parent=None):
+        self.gui_ready = False
         self.win = tk.Tk()
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
         self.dmc = DMC('134.117.39.229', True)
         self.make_widgets()
+        self.gui_ready = True
 
     def make_widgets(self):
         self.tabs = ttk.Notebook(self.win)
@@ -34,52 +36,87 @@ class NearFieldGUI:                            # not a widget subbclass
         
 class MotionTab(tk.Frame):
     
-    REGION_TYPE = {'points':'Number of points', 'step':'Step size'}
+    #REGION_TYPE = {'points':'Number of points', 'step':'Step size'}
     POS_LENGTH = 5 # Number of digits before . for positions
     POS_PRECISION = 5 # Number of digits after . for positions
-    STEP_LENGTH = 3 # Number of digits before . for steps
-    STEP_PRECISION = 5 # Number of digits after . for steps
+    #STEP_LENGTH = 3 # Number of digits before . for steps
+    #STEP_PRECISION = 5 # Number of digits after . for steps
     MAX_STEPS = 999 # Maximum number of steps
     
     AXES = ['X', 'Y', 'Z']
     # DEFAULT_VALS[AXIS][POS]
     DEFAULT_VALS = {'X':[0,5,100], 'Y':[0,5,100], 'Z':[0,5,1]}
-    FORMAT = ['{:.0f}', '{:.0f}', '{:.0f}']
+    POS_FORMAT = '{:.3f}'
+    POINTS_FORMAT = '{:.0f}'
+    STEP_FORMAT = '{:8.3f}'
     
     def __init__(self, parent=None, dmc=None):
+        self.gui_ready = False
         tk.Frame.__init__(self, parent)             # do superclass init
         self.dmc = dmc
         self.pack()
         self.make_widgets()                      # attach widgets to self
+        self.joystick_enable(False)
+        self.gui_ready = True
         
     def make_widgets(self):
-        move_group = tk.LabelFrame(self, text="Move Axes")
-        move_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.LEFT)
+        position_group = tk.LabelFrame(self, text="Move Axes")
+        position_group.pack(side=tk.LEFT,fill=tk.BOTH)
+        move_group = tk.Frame(position_group)
+        move_group.pack(side=tk.TOP)
         
         joystick_group = tk.Frame(move_group)
         joystick_group.pack(side=tk.RIGHT)
-        tk.Button(joystick_group,text="X up").grid(row=1,column=2)
-        tk.Button(joystick_group,text="X down").grid(row=3,column=2)
-        tk.Button(joystick_group,text="Y left").grid(row=2,column=1)
-        tk.Button(joystick_group,text="Y right").grid(row=2,column=3)
-        tk.Button(joystick_group,text="Z up").grid(row=1,column=4)
-        tk.Button(joystick_group,text="Z down").grid(row=3,column=4)
+        joystick_buttons = {};   
+        
+        joystick_positions = {'X' : [(3,2),(1,2)],
+                                   'Y' : [(2,1),(2,3)],
+                                   'Z': [(3,4),(1,4)]}
+        self.joystick_buttons = []
+        for ax, loc in joystick_positions.items():
+            btn = tk.Button(joystick_group,text=ax+'-')
+            self.joystick_buttons.append(btn)
+            btn.grid(row=loc[0][0], column=loc[0][1])
+            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, 1, True))
+            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, 1, False))
+            
+            btn = tk.Button(joystick_group,text=ax+'+')
+            self.joystick_buttons.append(btn)
+            btn.grid(row=loc[1][0], column=loc[1][1])
+            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, -1, True))
+            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, -1, False))
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
-        tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL).pack(side=tk.LEFT)
-        tk.Label(move_group,text="a").pack(side=tk.BOTTOM)
+        self.speed_scale = tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL)
+        self.speed_scale.pack(side=tk.LEFT)
         
+        # Label frame for starting calibration of CNC frame
+        calibrate_group = tk.LabelFrame(self, text="Calibration")
+        calibrate_group.pack(fill=tk.BOTH,expand=1)
+        self.calibration_button = tk.Button(calibrate_group, text="Calibrate",command=self.calibrate)
+        self.calibration_button.pack()
+        self.calibration_label = tk.Label(calibrate_group)
+        self.calibration_label.pack()
+        self.set_calibration_state(False)
+        
+        # Label frame for configuring measurement region
         config_region_group = tk.LabelFrame(self, text="Configure Region");
         config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT)
         
         config_type_group = tk.Frame(config_region_group)
         config_type_group.pack(side=tk.TOP)
         
-        self.region_type = tk.StringVar()
-        self.region_type.set(list(MotionTab.REGION_TYPE.keys())[0])
-        for [key,val] in MotionTab.REGION_TYPE.items():
-            tk.Radiobutton(config_type_group, text=val, variable=self.region_type,
-                           value=key,command=self.change_region_type).pack(side=tk.TOP)
+        position_group_2 = tk.Frame(position_group)
+        position_group_2.pack(side=tk.BOTTOM)
+        
+        self.current_pos_labels = []
+        for ax_n, ax in enumerate(AXES):
+            #t = ax + ': ' + MotionTab.POS_FORMAT.format(0)
+            t = ''
+            self.current_pos_labels.append(tk.Label(position_group_2, text=t))
+            self.current_pos_labels[ax_n].pack(side=tk.TOP)
+        
+        self.update_current_position()
         
         # Frame with start, stop, step values entry
         config_vals_group = tk.Frame(config_region_group)
@@ -88,79 +125,114 @@ class MotionTab(tk.Frame):
         # Labels for start, stop, step rows
         tk.Label(config_vals_group,text="Start").grid(row=2,column=1)
         tk.Label(config_vals_group,text="Stop").grid(row=3,column=1)
-        self.steps_label = tk.Label(config_vals_group,text=list(MotionTab.REGION_TYPE.values())[0])
-        longest_string = max(MotionTab.REGION_TYPE.values(),key=len)
-        self.steps_label.config(width=len(longest_string))
-        self.steps_label.grid(row=4,column=1)
+        tk.Label(config_vals_group,text="Number of points").grid(row=4,column=1)
+        tk.Label(config_vals_group,text="Step").grid(row=5,column=1)
         
-        self.pos_strings = {}
+        self.entry_strings = {}
         self.entries = {}
+        self.step_labels = [];
         for ax_n, ax in enumerate(AXES):
             
             # Labels for axis columns
             tk.Label(config_vals_group,text="{} axis".format(ax)).grid(row=1,column=ax_n+2)
             
-            for pos_n, pos in enumerate(['start','stop','step']):
-                self.pos_strings[(ax, pos)] = tk.StringVar()
-                self.pos_strings[(ax, pos)].set(
-                        MotionTab.FORMAT[pos_n].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
-                self.pos_strings[(ax, pos)] = tk.Entry(config_vals_group, textvariable=self.pos_strings[(ax, pos)], validate="key",
-                    validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
-                self.pos_strings[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
-        
-    def change_region_type(self):
-        for key,val in MotionTab.REGION_TYPE.items():
-            if self.region_type.get() == key:
-                self.steps_label.config(text=val)
+            self.step_labels.append(tk.Label(config_vals_group,text=MotionTab.STEP_FORMAT.format(0)))
+            self.step_labels[ax_n].grid(row=5,column=ax_n+2)
             
-    def validate_entry(self, P, axis, pos):
-        if pos == 'step':
-            if self.region_type.get() == 'points':
-                m = re.match("^[0-9]*$", P)
-                try:
-                    return m is not None and float(m.group(0)) <= 9999
-                except ValueError:
-                    return len(m.group(0)) is 0
+            format_str = [MotionTab.POS_FORMAT, MotionTab.POS_FORMAT, MotionTab.POINTS_FORMAT]
+            for pos_n, pos in enumerate(['start','stop','points']):
+                self.entry_strings[(ax, pos)] = tk.StringVar()
+                self.entry_strings[(ax, pos)].set(
+                        format_str[pos_n].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
+                self.entries[(ax, pos)] = tk.Entry(config_vals_group, textvariable=self.entry_strings[(ax, pos)], validate="key",
+                    validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
+                self.entries[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
+        
+#    def change_region_type(self):
+#        for key,val in MotionTab.REGION_TYPE.items():
+#            if self.region_type.get() == key:
+#                self.steps_label.config(text=val)
+#                
+#        if self.region_type.get() == 'step':
+#             for ax_n, ax in enumerate(AXES):
+#                 self.entry_strings[(ax, 'step')].set('1')
+            
+    def update_steps(self):
+        for ax_n, ax in enumerate(AXES):
+            try:
+                p = self.get_region(ax)
+            except ValueError:
+                self.step_labels[ax_n].config(text='-')
+                return
+                
+            if p[1] is p[0] or p[2] is 1:
+                self.step_labels[ax_n].config(text='-')
             else:
-                m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
-                if m is None:
+                #self.step_labels[ax_n].config(text='yes')
+                step = (p[1]-p[0])/p[2];
+                self.step_labels[ax_n].config(text=MotionTab.STEP_FORMAT.format(step))
+                
+    def update_current_position(self):
+        pos = self.dmc.get_position()
+        for ax_n, ax in enumerate(AXES):
+            t = ax + ': ' + MotionTab.POS_FORMAT.format(pos[ax_n])
+            self.current_pos_labels[ax_n].config(text=t)
+        
+    def validate_entry(self, P, axis, pos):
+        if pos == 'points':
+            m = re.match("^[0-9]*$", P)
+            try:
+                if m is None or float(m.group(0)) >= 9999:
                     return False
-                try:
-                    val = float(m.group(0))
-                    return abs(val) > 0.01 and len(m.group(0)) < 8 and len(m.group(2)) < 3
-                except ValueError:
-                    return len(m.group(0)) is 0
+            except ValueError:
+                if len(m.group(0)) is not 0:
+                    return False
         else:
             m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
             try:
-                return m is not None and len(m.group(0)) < 8 and len(m.group(2)) < 3
+                if m is None or len(m.group(0)) > 8 or len(m.group(2)) > 3:
+                    return False
             except ValueError:
                 return False
-        return False
+        if self.gui_ready:
+           self.update_steps()
+        return True
+    
+    def joystick_btn_callback(self, axis, dir, press):#(self, axis, dir, begin):
+        print('{:} {:} {:}'.format(axis, dir, press))
+        
+        
+        if not press:
+            self.update_current_position()
         
     
     # Returns (start, stop, n_points)
     def get_region(self, axis):
-        p = ()
-        p[0] = float(self.pos_strings[(axis, 'start')])
-        p[1] = float(self.pos_strings[(axis, 'stop')])
-        
-        if(self.region_type == 'points'):
-            p[2] = float(self.pos_strings[(axis, 'step')])
-        else:
-            p[2] = (p(1)-p(0))/float(self.pos_strings[(axis, 'step')])
+        p = []
+        p.append(float(self.entry_strings[(axis, 'start')].get()))
+        p.append(float(self.entry_strings[(axis, 'stop')].get()))
+        p.append(int(self.entry_strings[(axis, 'points')].get()))
         return p
+    
+    def joystick_enable(self, enable):
+        if enable:
+            state = tk.NORMAL
+        else:
+            state = tk.DISABLED
         
- #   def update_values(self):
-        
-        
-        #tk.Label(joystick_group,text="").pack()
-        
-        #widget = tk.Button(self, text='Hello1')
-        #widget.pack(side=tk.LEFT)
-#        widget2 = tk.Button(self, text='Hello2')
-#        widget2.pack(side=tk.LEFT)
-
+        self.speed_scale.config(state=state)
+        for b in self.joystick_buttons:
+            b.config(state=state)
+     
+    def set_calibration_state(self, ok):
+        if ok:
+            self.calibration_label.config(text="Calibration OK", fg="black")
+        else:
+            self.calibration_label.config(text="Calibration required", fg="red")
+            
+    def calibrate(self):
+        tk.messagebox.showinfo("Calibration Wizard", "Calibration happens now...")
+        self.set_calibration_state(True)
 
 if __name__ == '__main__':
     util.debug_messages = True
