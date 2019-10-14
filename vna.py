@@ -10,7 +10,79 @@ All these command sequences where based on the programer's manual for the 8720ES
 import visa
 from pyvisa.resources import MessageBasedResource
 import myNumbers
-class GPIBInstr():
+from enum import Enum
+import time
+import util
+
+FREQ_MIN = 20 # in GHZ
+FREQ_MAX = 60
+POINTS_MIN = 1 # Number of steps
+POINTS_MAX = 1601
+POWER_MIN = -15 # in dBm
+POWER_MAX = -5
+
+class FreqSweepParams():
+    def __init__(self, start, stop, points, power):
+        self.start = start
+        self.stop = stop
+        self.points = points
+        self.power = power
+    
+#    def validate():
+#        return (self.start >= FREQ_MIN and self.stop <= FREQ_MAX
+#            and self.stop >= FREQ_MIN and self.stop <= FREQ_MAX
+#            and self.start <= self.stop
+#            and self.points >= POINTS_MIN and self.points <= POINTS_MAX
+#            and self.power >= POWER_MIN and self.power <= POWER_MAX)
+    
+    def validation_messages(self):
+        errors = []
+        if self.start < FREQ_MIN or self.start > FREQ_MAX:
+            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN, FREQ_MAX));
+        if self.stop < FREQ_MIN or self.stop > FREQ_MAX:
+            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN, FREQ_MAX));
+        if self.start > self.stop:
+            errors.append("Start frequency cannot be greater than stop frequency");
+        if self.points < POINTS_MIN or self.points > POINTS_MAX:
+            errors.append("Number of points should be from {} to {}".format(POINTS_MIN, POINTS_MAX));
+        if self.power < POWER_MIN or self.power > POWER_MAX:
+            errors.append("Power level should be between {} dBm and {} dBm".format(POWER_MIN, POWER_MAX));
+        if len(errors) > 0:
+            return errors
+        else:
+            return None
+
+class CalStep(Enum):
+    BEGIN = 0
+    OPEN_P1 = 1
+    SHORT_P1 = 2
+    LOAD_P1 = 3
+    OPEN_P2 = 4
+    SHORT_P2 = 5
+    LOAD_P2 = 6
+    THRU = 7
+    COMPLETE_NO_ISOLATION = 8
+    ISOLATION = 9
+    INCOMPLETE_QUIT = 10
+
+class CalibrationStepDetails():
+    def __init__(self, prompt, next_steps):
+        self.prompt = prompt
+        self.next_steps = next_steps
+
+CAL_STEPS = {CalStep.BEGIN: CalibrationStepDetails("", [CalStep.OPEN_P1, CalStep.INCOMPLETE_QUIT]),
+             CalStep.OPEN_P1: CalibrationStepDetails("Connect OPEN at port 1", [CalStep.SHORT_P1, CalStep.INCOMPLETE_QUIT]),
+             CalStep.SHORT_P1: CalibrationStepDetails("Connect SHORT at port 1", [CalStep.LOAD_P1, CalStep.INCOMPLETE_QUIT]),
+             CalStep.LOAD_P1: CalibrationStepDetails("Connect LOAD at port 1", [CalStep.OPEN_P2, CalStep.INCOMPLETE_QUIT]),
+             CalStep.OPEN_P2: CalibrationStepDetails("Connect OPEN at port 2", [CalStep.SHORT_P2, CalStep.INCOMPLETE_QUIT]),
+             CalStep.SHORT_P2: CalibrationStepDetails("Connect SHORT at port 2", [CalStep.LOAD_P2, CalStep.INCOMPLETE_QUIT]),
+             CalStep.LOAD_P2: CalibrationStepDetails("Connect LOAD at port 2", [CalStep.THRU, CalStep.INCOMPLETE_QUIT]),
+             CalStep.THRU: CalibrationStepDetails("Connect THRU", [CalStep.ISOLATION, CalStep.INCOMPLETE_QUIT]),
+             CalStep.ISOLATION: CalibrationStepDetails("Run isolation calibration?", [None, None]),
+             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None])}
+   
+
+class VNA():
     '''
     Interface with a GPIB instrument using the Visa library.
     Use it to do full 2 port calibrations, set measurement parameters and get measurement data.
@@ -19,9 +91,9 @@ class GPIBInstr():
         '''Creates a Visa resource manager object to manage the instruments connected to the computer.
         Then initializes communication with a message based instrument like the vna used.
         It uses the name provided by the resource manager.'''
-        self.rm=visa.ResourceManager()
-        self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
-        self.vna.timeout=None #Avoid timing out for time consuming measurements.
+        #self.rm=visa.ResourceManager()
+        #self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
+        #self.vna.timeout=None #Avoid timing out for time consuming measurements.
 
     def setStartF(self,startF="",units=""):
         '''Sets the start frequency parameter on the VNA.
@@ -107,7 +179,12 @@ class GPIBInstr():
         #self.vna.write("CORRON;") #Turn on error correction
         self.vna.write("SING;") #Single sweep
 
-    def calibrate(self,stepNum,answ=None,calStr="CALIFUL2"):
+    def calibrate(self, cal_step, option):
+        time.sleep(0.5)
+        util.dprint('Done cal step {} with option={}'.format(cal_step, option))
+    
+
+    def calibrate_old(self,stepNum,answ=None,calStr="CALIFUL2"):
         '''Runs the correct calibration method for the calibration type specified.
         Sends the requiered parameters too.
         Returns the instruccions and input choices sent by the calibration process.
