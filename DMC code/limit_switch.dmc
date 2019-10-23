@@ -1,0 +1,15 @@
+'Galil DMC Code Example
+#Main
+  WT1000
+JP#Main
+EN
+'
+#LIMSWI ;'runs when a limit switch is tripped
+MG "Limit switch:"{N}
+IF ((_LFA = 0) | (_LRA = 0))
+ MG "Axis A"
+ENDIF
+IF ((_LFB = 0) | (_LRB = 0))
+ MG "Axis B"
+ENDIF
+RE1;' RE used to exit the #LIMSWI sub

@@ -6,6 +6,7 @@ from enum import Enum
 import math
 import threading
 import time
+import numpy
 
 class Motor(Enum):
     X = 'A'
@@ -51,7 +52,7 @@ class StopCode(Enum):
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
     
-CNT_PER_MM = 1 # Stepper motor counts per mm
+CNT_PER_MM = 5 # Stepper motor counts per mm
 SLEEP_TIME = 20 # Update every 20 ms
 
 class DMC(object):
@@ -62,6 +63,7 @@ class DMC(object):
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
         
+        self.speed = 5000
         self.position_cnt = [0, 0, 0]
         self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
         self.stop_code = [StopCode.NONE for a in AXES]
@@ -96,6 +98,23 @@ class DMC(object):
                 return "dummy response"
         finally:
             self.comm_lock.release()
+    
+    def send_commands(self, commands):
+        self.comm_lock.acquire()
+        try:
+            for c in commands:
+                util.dprint(c)
+                if not self.dummy:
+                    self.g.GCommand(c);
+        finally:
+            self.comm_lock.release()
+            
+    def send_command_threaded(self, command):
+        threading.Thread(target = self.send_command, args = (command,)).start()
+        
+    def send_commands_threaded(self, commands):
+        threading.Thread(target = self.send_commands, args = (commands,)).start()
+        
         
     def disable_motors(self):
         self.send_command("MO")
@@ -110,14 +129,15 @@ class DMC(object):
         util.dprint(m);
         
         # Set axis A,B,C,D to be stepper motors
-        m = self.send_command('MT 2,2,2,2')
+        #m = self.send_command('MT 2,2,2,2')
+        m = self.send_command('MT -2.5,-2,-2,-2')
         
         # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
         m = self.send_command('AG 1,1,1,1')
         
         # Set holding current to be 25%,n samples after stopping
-        n = 15
-        m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
+        #n = 15
+        #m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
         
         # Set Y2 axis to be a slave to Y1 axis
         self.send_command('GA{}={}'.format(Motor.Y2.value, Motor.Y1.value))
@@ -125,14 +145,14 @@ class DMC(object):
         self.send_command('GR{}=1'.format(Motor.Y2.value))
         
         # Set control loop rate in units of 1/microseconds
-        self.send_command("TM 1000")
-        
-        self.set_speed(5)
-        self.set_acceleration(5)
-        self.set_decceleration(5)
-        
-        self.enable_motors();
-        
+#        self.send_command("TM 1000")
+
+        self.set_speed(self.speed)
+        #self.set_acceleration(5)
+        #self.set_decceleration(5)
+
+#        self.enable_motors();
+#        
         util.dprint("Motors configured")
     
     # Set the speed in mm/s
@@ -151,7 +171,7 @@ class DMC(object):
             # Set switch decelleration
             self.send_command('SD{}={}'.format(m.value, acc))
     
-    # Set acceleration in mm/s^2
+    # Set decceleration in mm/s^2
     def set_decceleration(self, acc):
         acc = math.floor(acc*CNT_PER_MM)
         for mi, m in enumerate(AXES_MOTORS):
@@ -181,12 +201,21 @@ class DMC(object):
             s = self.send_command('MG_SC{}'.format(m.value))
             if self.dummy:
                 s = 1
-            sc.append(StopCode(s))
+            sc.append(StopCode(float(s)))
             
         return sc
     
     def max_position(self):
         return [10, 20, 30];
+    
+    def jog(self, axis, direction):
+        jog_cmd = 'JG{}={}'.format(AXES_MOTORS[axis].value, 
+                                   numpy.sign(direction)*self.speed)
+        start_cmd = 'BG{}'.format(AXES_MOTORS[axis].value)
+        self.send_commands_threaded([jog_cmd, start_cmd])
+    
+    def stop(self):
+        self.send_command_threaded('ST')
     
     def move_absolute(self, pos):
         self.data_lock.acquire()
@@ -244,5 +273,5 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.229', True)
+    d = DMC('134.117.39.229', False)
     #d.configure();
