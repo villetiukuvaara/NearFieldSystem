@@ -12,15 +12,17 @@ import threading
 
 VALIDATION_REGEX = [""]
 SLEEP = 100
+FREQ_DECIMALS = 4
+POWER_DECIMALS = 2
 
 class VNATab(tk.Frame):
     
     def __init__(self, parent=None):
         self.gui_ready = False
         tk.Frame.__init__(self, parent)             # do superclass init
+        self.vna = vna.VNA()
         self.pack()
         self.make_widgets()                      # attach widgets to self
-        self.vna = vna.VNA()
         self.cal_step_done = False
         self.next_cal_step = None
         
@@ -28,11 +30,18 @@ class VNATab(tk.Frame):
         # Label frame for starting calibration
         calibrate_group = tk.LabelFrame(self, text="Calibration")
         calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,expand=1)
-        self.calibration_button = tk.Button(calibrate_group, text="Calibrate",command=self.calibrate_btn_callback)
-        self.calibration_button.pack()
+        cal_btn_group = tk.Frame(calibrate_group)
+        cal_btn_group.pack(side=tk.TOP)
+        self.calibration_button = tk.Button(cal_btn_group, text="Calibration wizard",command=self.calibrate_btn_callback)
+        self.calibration_button.pack(side=tk.LEFT,padx=5,pady=5)
+        self.load_button = tk.Button(cal_btn_group, text="Load calibration")
+        self.load_button.pack(side=tk.LEFT,padx=5,pady=5)
+        self.save_button = tk.Button(cal_btn_group, text="Save calibration")
+        self.save_button.pack(side=tk.LEFT,padx=5,pady=5)
+        
         self.calibration_label = tk.Label(calibrate_group)
         self.calibration_label.pack()
-        self.set_calibration_state(False)
+        self.update_cal_info()
         
         # Label frame for configuring measurement
         config_meas_group = tk.LabelFrame(self, text="Configure Measurement");
@@ -95,16 +104,8 @@ class VNATab(tk.Frame):
 
         return True
 
-    def set_calibration_state(self, ok):
-        if ok:
-            self.calibration_label.config(text="Calibration OK", fg="black")
-        else:
-            self.calibration_label.config(text="Calibration\nrequired", fg="red")
-            
     def calibrate_btn_callback(self):
         #tk.messagebox.showinfo("Calibration Wizard", "Calibration happens now...")
-        self.set_calibration_state(True)
-        self.cal_step = vna.CalStep.BEGIN
         self.cal_dialog = CalDialog(self)
         self.cal_dialog.make_widgets_config()
         
@@ -113,9 +114,11 @@ class VNATab(tk.Frame):
             step = self.next_cal_step
             
             if step is None:
+                self.update_cal_info()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration complete")
                 return
             if step is vna.CalStep.INCOMPLETE_QUIT:
+                self.update_cal_info()
                 tk.messagebox.showerror("Calibration Wizard", vna.CAL_STEPS[step].prompt)
                 return
             
@@ -125,7 +128,18 @@ class VNATab(tk.Frame):
             threading.Thread(target=lambda: self.calibration_task(step, ans)).start()
         
         self.after(SLEEP, self.calibration_monitor)
- 
+        
+    def update_cal_info(self):
+        if not self.vna.cal_ok:
+            self.calibration_label.config(text="Calibration\nrequired", fg="red")
+            self.save_button.config(state=tk.DISABLED)
+        else:
+            p = self.vna.get_calibration_params()
+            text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Isolation calibration: {iso}".format(
+                    start=p.start, stop=p.stop, points=p.points, power=p.power, iso=("Yes" if p.isolation_cal else "No"),
+                    s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
+            self.calibration_label.config(text=text, fg="black")
+            self.save_button.config(state=tk.NORMAL)
         
     def calibration_task(self, step, option):
         self.vna.calibrate(step, option)
@@ -180,6 +194,7 @@ class CalDialog():
             if v is None:
                 self.top.destroy()
                 step = vna.CalStep.BEGIN
+                self.parent.vna.set_calibration_params(params)
                 self.parent.next_cal_step = vna.CAL_STEPS[step].next_steps[0]
                 self.parent.cal_step_done = False
                 threading.Thread(target=lambda: self.parent.calibration_task(step, None)).start()

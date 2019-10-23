@@ -22,11 +22,12 @@ POWER_MIN = -15 # in dBm
 POWER_MAX = -5
 
 class FreqSweepParams():
-    def __init__(self, start, stop, points, power):
+    def __init__(self, start, stop, points, power, isolation_cal=False):
         self.start = start
         self.stop = stop
         self.points = points
         self.power = power
+        self.isolation_cal = isolation_cal
     
 #    def validate():
 #        return (self.start >= FREQ_MIN and self.stop <= FREQ_MAX
@@ -94,6 +95,8 @@ class VNA():
         #self.rm=visa.ResourceManager()
         #self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
         #self.vna.timeout=None #Avoid timing out for time consuming measurements.
+        self.cal_ok = False
+        self.cal_params = FreqSweepParams(0,0,0,0)
 
     def setStartF(self,startF="",units=""):
         '''Sets the start frequency parameter on the VNA.
@@ -179,10 +182,21 @@ class VNA():
         #self.vna.write("CORRON;") #Turn on error correction
         self.vna.write("SING;") #Single sweep
 
+    
     def calibrate(self, cal_step, option):
         time.sleep(0.5)
+        self.cal_ok = False
         util.dprint('Done cal step {} with option={}'.format(cal_step, option))
+        if cal_step == CalStep.ISOLATION:
+            self.cal_params.isolation_cal = option
+            self.cal_ok = True
+       
+    def set_calibration_params(self, params):
+        self.cal_params = params
     
+    def get_calibration_params(self):
+        return self.cal_params
+        
 
     def calibrate_old(self,stepNum,answ=None,calStr="CALIFUL2"):
         '''Runs the correct calibration method for the calibration type specified.
