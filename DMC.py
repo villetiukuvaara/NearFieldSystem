@@ -8,7 +8,6 @@ import threading
 import time
 import numpy
 import queue
-import re
 
 class Motor(Enum):
     X = 'A'
@@ -92,6 +91,7 @@ class DMC(object):
         self.done = True
         self.request_queue = queue.Queue()
         self.task = None
+        self.g = None
         
         if self.dummy:
             #self.task = DMCDummyTask(self)
@@ -102,14 +102,26 @@ class DMC(object):
             #self.g.GOpen('192.168.0.42 --direct -s ALL')
             self.g.GOpen(ip_address)
             print(self.g.GInfo())
-    
-    def __del__(self):
-        if self.dummy:
-            return
-        info = self.g.GInfo();
-        self.g.GClose()
-        print('Closed connection to ' + info)
+
+    def clean_up(self):
+        try:
+            self.disable_motors()
+            self.status = Status.NOT_CONFIGURED
+            while(self.task is not None and self.task.is_alive()):
+                pass
+        except:
+            pass
         
+        try:
+            self.g.GClose()
+            print('Closed connection to ' + info)
+        except:
+            pass
+
+    def __del__(self):
+        self.clean_up()
+                
+             
     def send_command(self, command):
         util.dprint(command)
         self.comm_lock.acquire()
@@ -203,9 +215,11 @@ class DMC(object):
         for mi, m in enumerate(AXES_MOTORS):
             self.send_command('DC{}={}'.format(m.value, acc))
     
+    # Return position in mm
     def get_position(self):
         return [p/CNT_PER_MM for p in self.position_cnt]
-        
+    
+    # Update position. This is blocking!
     def update_position(self):
         if self.dummy:
             self.position_cnt = [0, 0, 0]
@@ -216,6 +230,7 @@ class DMC(object):
         z = self.send_command('MG_TP{}'.format(Motor.Z.value))
         self.position_cnt = [x,y,z];
     
+    # Update stop code. This is blocking!
     def update_stop_code(self):
         sc = []
         for mi, m in enumerate(AXES_MOTORS):
@@ -228,10 +243,13 @@ class DMC(object):
     def max_position(self):
         return [10, 20, 30];
     
+    # Task that runs in background and takes care of DMC control
     def background_task(self):
         util.dprint('Started DMC task {}'.format(threading.current_thread()))
         while True:
-            if(threading.current_thread() != self.task):
+            # Run the loop forever, unless it is no longer referenced (via self.task) or the
+            # DMC becomes not configured
+            if(threading.current_thread() != self.task or self.status == Status.NOT_CONFIGURED):
                 util.dprint('Ending DMC task {}'.format(threading.current_thread()))
                 return # End this task if it's no longer referenced 
             try:
@@ -276,6 +294,7 @@ class DMC(object):
                 
             except queue.Empty:
                 pass
+
             # Need to add except for Gclib ? error
             
             self.update_position()
