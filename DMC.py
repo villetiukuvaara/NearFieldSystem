@@ -207,33 +207,23 @@ class DMC(object):
         return [p/CNT_PER_MM for p in self.position_cnt]
         
     def update_position(self):
-        self.data_lock.acquire()
-        try:
-            if self.dummy:
-                self.position_cnt = [0, 0, 0]
-                return
-            
-            x = self.send_command('MG_TP{}'.format(Motor.X.value))
-            y = self.send_command('MG_TP{}'.format(Motor.Y1.value))
-            z = self.send_command('MG_TP{}'.format(Motor.Z.value))
-            self.position_cnt = [x,y,z];
-        finally:
-            self.data_lock.release()
-    
-    # Returns position in mm
-    def get_position(self):
-        self.position_cnt*CNT_PER_MM;
+        if self.dummy:
+            self.position_cnt = [0, 0, 0]
+            return
+        
+        x = self.send_command('MG_TP{}'.format(Motor.X.value))
+        y = self.send_command('MG_TP{}'.format(Motor.Y1.value))
+        z = self.send_command('MG_TP{}'.format(Motor.Z.value))
+        self.position_cnt = [x,y,z];
     
     def update_stop_code(self):
-        self.data_lock.acquire()
-        try:
-            for mi, m in enumerate(AXES_MOTORS):
-                s = self.send_command('MG_SC{}'.format(m.value))
-                if self.dummy:
-                    s = 1
-                self.stop_code[mi] = StopCode(float(s))
-        finally:
-            self.data_lock.release()
+        sc = []
+        for mi, m in enumerate(AXES_MOTORS):
+            s = self.send_command('MG_SC{}'.format(m.value))
+            if self.dummy:
+                s = 1
+            sc.append(StopCode(float(s)))
+        self.stop_code = sc
     
     def max_position(self):
         return [10, 20, 30];
