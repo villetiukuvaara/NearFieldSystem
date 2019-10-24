@@ -174,6 +174,8 @@ class DMC(object):
         #self.set_acceleration(5)
         #self.set_decceleration(5)
 #
+        # Remove existing requests
+        self.request_queue = queue.Queue()
         self.task = threading.Thread(target = self.background_task)
         self.task.start()
         util.dprint("Motors configured")
@@ -218,6 +220,10 @@ class DMC(object):
         finally:
             self.data_lock.release()
     
+    # Returns position in mm
+    def get_position(self):
+        self.position_cnt*CNT_PER_MM;
+    
     def update_stop_code(self):
         self.data_lock.acquire()
         try:
@@ -233,10 +239,10 @@ class DMC(object):
         return [10, 20, 30];
     
     def background_task(self):
-        #util.dprint('Started DMC task')
+        util.dprint('Started DMC task {}'.format(threading.current_thread()))
         while True:
             if(threading.current_thread() != self.task):
-                util.dprint('Ending DMC task')
+                util.dprint('Ending DMC task {}'.format(threading.current_thread()))
                 return # End this task if it's no longer referenced 
             try:
                 r = self.request_queue.get(True, 0.02)
@@ -282,25 +288,25 @@ class DMC(object):
                 pass
             # Need to add except for Gclib ? error
             
-            #self.update_position()
-            #self.update_stop_code()
-            
+            self.update_position()
+            self.update_stop_code()
             
             if self.status == Status.JOGGING:
-                if any([s is StopCode.RUNNING_INDEPENDENT for s in self.st]):
+                if any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     pass
                 else:
                     status = Status.STOP
-                    for mi,m in AXES_MOTORS:
-                        if sc[mi] == StopCode.DECEL_STOP_FWD_LIM:
+                    for mi,m in enumerate(AXES_MOTORS):
+                        if self.stop_code[mi] == StopCode.DECEL_STOP_FWD_LIM:
                             self.at_limit[mi] = 1
-                        elif sc[mi] == StopCode.DECEL_STOP_REV_LIM:
+                        elif self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
                             self.at_limit[mi] = -1
-                        elif sc[mi] == StopCode.DECEL_STOP_ST:
+                        elif self.stop_code[mi] == StopCode.DECEL_STOP_ST:
                             self.at_limit[mi] = 0
-                        elif(sc[mi] == STOP_ABORT_INPUT or sc[mi] == STOP_ABORT_INPUT
-                             or sc[mi] == STOP_ABORT_INPUT
-                             or sc[mi] == DECEL_STOP_OE1):
+                        elif(self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
+                             or self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
+                             or self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
+                             or self.stop_code[mi] == StopCode.DECEL_STOP_OE1):
                             status = Status.NOT_CONFIGURED
                     
                     self.status = status
