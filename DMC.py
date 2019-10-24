@@ -7,20 +7,38 @@ import math
 import threading
 import time
 import numpy
+import queue
+import re
 
 class Motor(Enum):
     X = 'A'
     Y1 = 'B'
     Y2 = 'C'
     Z = 'D'
+
+
+
+class DMCRequest():
+    def __init__(self, type):
+        self.type = type
     
+    def jog_params(self, axis, dir):
+        self.axis = axis
+        self.dir = dir
+        return self
+    
+    def move_params(self, coord):
+        self.coord = coord
+
 class Status(Enum):
-    NOT_CONFIGURED = 0
+    NOT_CONFIGURED = 0 # Initial state
     MOVING = 1
     JOGGING = 2
-    STOP = 3
-    REQUEST_FAIL = 4
-    ERROR = 5
+    HOMING = 3
+    STOP = 4 # Motors are stopped but enabled (drawing current)
+    MOTORS_DISABLED = 5 # Motors are disabled (not drawing current)
+    REQUEST_FAIL = 6
+    ERROR = 7
 
 class StopCode(Enum):
     RUNNING_INDEPENDENT = 0
@@ -53,6 +71,8 @@ AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
     
 CNT_PER_MM = 5 # Stepper motor counts per mm
+MAX_SPEED = 10000
+MIN_SPEED = 1000
 SLEEP_TIME = 20 # Update every 20 ms
 
 class DMC(object):
@@ -64,12 +84,14 @@ class DMC(object):
         self.comm_lock = threading.RLock()
         
         self.speed = 5000
-        self.position_cnt = [0, 0, 0]
+        self.position_cnt = None # Do not have position count until homing is done
         self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
         self.stop_code = [StopCode.NONE for a in AXES]
         self.status = Status.STOP
         self.error_msg = ""
         self.done = True
+        self.request_queue = queue.Queue()
+        self.task = None
         
         if self.dummy:
             #self.task = DMCDummyTask(self)
@@ -115,7 +137,6 @@ class DMC(object):
     def send_commands_threaded(self, commands):
         threading.Thread(target = self.send_commands, args = (commands,)).start()
         
-        
     def disable_motors(self):
         self.send_command("MO")
         util.dprint("Motors disabled")
@@ -125,11 +146,12 @@ class DMC(object):
         util.dprint("Motors enabled")
     
     def configure(self):
-        m = self.disable_motors();
-        util.dprint(m);
+        #self.disable_motors();
+        self.send_command('RS') # Perform reset to power on condition
         
         # Set axis A,B,C,D to be stepper motors
-        #m = self.send_command('MT 2,2,2,2')
+        # -2.5 -> direction reversed
+        # 2.5 -> normal direction
         m = self.send_command('MT -2.5,-2,-2,-2')
         
         # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
@@ -140,7 +162,8 @@ class DMC(object):
         #m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
         
         # Set Y2 axis to be a slave to Y1 axis
-        self.send_command('GA{}={}'.format(Motor.Y2.value, Motor.Y1.value))
+        # C prefix indicates commanded position
+        self.send_command('GA{}=C{}'.format(Motor.Y2.value, Motor.Y1.value))
         # Set gearing ratio 1:1
         self.send_command('GR{}=1'.format(Motor.Y2.value))
         
@@ -150,10 +173,11 @@ class DMC(object):
         self.set_speed(self.speed)
         #self.set_acceleration(5)
         #self.set_decceleration(5)
-
-#        self.enable_motors();
-#        
+#
+        self.task = threading.Thread(target = self.background_task)
+        self.task.start()
         util.dprint("Motors configured")
+        self.status = Status.MOTORS_DISABLED
     
     # Set the speed in mm/s
     def set_speed(self, speed):
@@ -194,28 +218,103 @@ class DMC(object):
         finally:
             self.data_lock.release()
     
-    def read_stop_code(self):
-        sc = []
-        
-        for mi, m in enumerate(AXES_MOTORS):
-            s = self.send_command('MG_SC{}'.format(m.value))
-            if self.dummy:
-                s = 1
-            sc.append(StopCode(float(s)))
-            
-        return sc
+    def update_stop_code(self):
+        self.data_lock.acquire()
+        try:
+            for mi, m in enumerate(AXES_MOTORS):
+                s = self.send_command('MG_SC{}'.format(m.value))
+                if self.dummy:
+                    s = 1
+                self.stop_code[mi] = StopCode(float(s))
+        finally:
+            self.data_lock.release()
     
     def max_position(self):
         return [10, 20, 30];
     
+    def background_task(self):
+        #util.dprint('Started DMC task')
+        while True:
+            if(threading.current_thread() != self.task):
+                util.dprint('Ending DMC task')
+                return # End this task if it's no longer referenced 
+            try:
+                r = self.request_queue.get(True, 0.02)
+                old_status = self.status
+                
+                if r.type == Status.STOP:
+                    if self.status == Status.MOTORS_DISABLED:
+                        # If motors are disabled, need to use Serve Here command
+                        # to enable, which sets the coordinate system to (0,0,0)
+                        self.send_command('SH')
+                        # Set to None to indicate uncalibrated coordinate system
+                        self.position_cnt = None
+                    else:
+                        self.send_command('ST')
+                    self.status = Status.STOP
+                    
+                if r.type == Status.MOTORS_DISABLED:
+                    self.send_command('ST')
+                    self.send_command('MO')
+                    self.position_cnt = None
+                    self.status = Status.MOTORS_DISABLED
+                
+                if r.type == Status.JOGGING:
+                    if self.status == Status.STOP:
+                        self.send_command('JG{}={}'.format(AXES_MOTORS[r.axis].value, 
+                                   numpy.sign(r.dir)*self.speed))
+                        self.send_command('BG{}'.format(AXES_MOTORS[r.axis].value))
+                        self.status = Status.JOGGING
+                    # Ignore the request for JOG mode in other cases, e.g. if moving
+                    
+                if r.type == Status.HOMING:
+                    if self.status == Status.STOP:
+                        for m in AXES_MOTORS:
+                            self.set_speed(MAX_SPEED)
+                            self.send_command('JG{}={}'.format(m.value, -self.speed))
+                        
+                        self.send_command('BG')
+                        self.status = Status.HOMING
+
+                util.dprint('DMC status change {} > {}'.format(old_status, self.status))
+                
+            except queue.Empty:
+                pass
+            # Need to add except for Gclib ? error
+            
+            #self.update_position()
+            #self.update_stop_code()
+            
+            
+            if self.status == Status.JOGGING:
+                if any([s is StopCode.RUNNING_INDEPENDENT for s in self.st]):
+                    pass
+                else:
+                    status = Status.STOP
+                    for mi,m in AXES_MOTORS:
+                        if sc[mi] == StopCode.DECEL_STOP_FWD_LIM:
+                            self.at_limit[mi] = 1
+                        elif sc[mi] == StopCode.DECEL_STOP_REV_LIM:
+                            self.at_limit[mi] = -1
+                        elif sc[mi] == StopCode.DECEL_STOP_ST:
+                            self.at_limit[mi] = 0
+                        elif(sc[mi] == STOP_ABORT_INPUT or sc[mi] == STOP_ABORT_INPUT
+                             or sc[mi] == STOP_ABORT_INPUT
+                             or sc[mi] == DECEL_STOP_OE1):
+                            status = Status.NOT_CONFIGURED
+                    
+                    self.status = status
+                        
+            
+            
+    
     def jog(self, axis, direction):
-        jog_cmd = 'JG{}={}'.format(AXES_MOTORS[axis].value, 
-                                   numpy.sign(direction)*self.speed)
-        start_cmd = 'BG{}'.format(AXES_MOTORS[axis].value)
-        self.send_commands_threaded([jog_cmd, start_cmd])
+        self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, direction),
+                               False) # False makes it not blocking
     
     def stop(self):
-        self.send_command_threaded('ST')
+        self.request_queue.put(DMCRequest(Status.STOP),
+                               False) # False makes it not blocking
     
     def move_absolute(self, pos):
         self.data_lock.acquire()
@@ -273,5 +372,5 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.229', False)
+    d = DMC('134.117.39.229', True)
     #d.configure();
