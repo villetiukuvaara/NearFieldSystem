@@ -152,7 +152,7 @@ class DMC(object):
         # Set axis A,B,C,D to be stepper motors
         # -2.5 -> direction reversed
         # 2.5 -> normal direction
-        m = self.send_command('MT -2.5,-2,-2,-2')
+        m = self.send_command('MT -2.5,-2.5,-2,-2')
         
         # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
         m = self.send_command('AG 1,1,1,1')
@@ -166,6 +166,10 @@ class DMC(object):
         self.send_command('GA{}=C{}'.format(Motor.Y2.value, Motor.Y1.value))
         # Set gearing ratio 1:1
         self.send_command('GR{}=1'.format(Motor.Y2.value))
+        # Enable gantry mode so that axes remained geared even after
+        # ST command
+        self.send_command('GR{}=1'.format(Motor.Y2.value))
+        
         
         # Set control loop rate in units of 1/microseconds
 #        self.send_command("TM 1000")
@@ -368,5 +372,5 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.229', True)
+    d = DMC('134.117.39.229', False)
     #d.configure();
