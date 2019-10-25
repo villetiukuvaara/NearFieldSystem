@@ -261,9 +261,19 @@ class DMC(object):
                 
                 if r.type == Status.JOGGING:
                     if self.status == Status.STOP:
-                        self.send_command('JG{}={}'.format(AXES_MOTORS[r.axis].value, 
+                        # If moving forward, enable only the forward axis limit
+                        # or only the backwards limit if moving backwards
+                        motor = AXES_MOTORS[r.axis].value
+                        if r.dir == 0:
+                            raise Exception('Direction cannot be 0')
+                        if r.dir > 0:
+                            self.send_command('LD{}=2'.format(motor)) # reverse limit switch disabled
+                        else:
+                            self.send_command('LD{}=1'.format(motor)) # forward limit switch disabled
+
+                        self.send_command('JG{}={}'.format(motor, 
                                    numpy.sign(r.dir)*self.speed))
-                        self.send_command('BG{}'.format(AXES_MOTORS[r.axis].value))
+                        self.send_command('BG{}'.format(motor))
                         self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
                     
@@ -373,4 +383,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC('134.117.39.229', False)
+    d.configure()
+    d.stop()
     #d.configure();
