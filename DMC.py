@@ -152,10 +152,10 @@ class DMC(object):
         # Set axis A,B,C,D to be stepper motors
         # -2.5 -> direction reversed
         # 2.5 -> normal direction
-        m = self.send_command('MT -2.5,-2.5,-2,-2')
+        m = self.send_command('MT -2.5,-2.5,-2,-2.5')
         
         # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
-        m = self.send_command('AG 1,1,1,1')
+        m = self.send_command('AG 2,2,2,2')
         
         # Set holding current to be 25%,n samples after stopping
         #n = 15
@@ -174,7 +174,7 @@ class DMC(object):
         # Set control loop rate in units of 1/microseconds
 #        self.send_command("TM 1000")
 
-        self.set_speed(self.speed)
+        self.set_speed(1000)
         #self.set_acceleration(5)
         #self.set_decceleration(5)
 #
@@ -187,10 +187,9 @@ class DMC(object):
     
     # Set the speed in mm/s
     def set_speed(self, speed):
-        self.speed = speed
-        speed = math.floor(speed*CNT_PER_MM)
+        self.speed = math.floor(speed*CNT_PER_MM)
         for mi, m in enumerate(AXES_MOTORS):
-            self.send_command('SP{}={}'.format(m.value, speed))
+            self.send_command('SP{}={}'.format(m.value, self.speed))
     
     # Set acceleration in mm/s^2
     def set_acceleration(self, acc):
