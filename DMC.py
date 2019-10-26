@@ -6,7 +6,6 @@ from enum import Enum
 import math
 import threading
 import time
-import numpy
 import queue
 
 class Motor(Enum):
@@ -21,9 +20,9 @@ class DMCRequest():
     def __init__(self, type):
         self.type = type
     
-    def jog_params(self, axis, dir):
+    def jog_params(self, axis, forward):
         self.axis = axis
-        self.dir = dir
+        self.forward = forward
         return self
     
     def move_params(self, coord):
@@ -164,10 +163,10 @@ class DMC(object):
         # Set axis A,B,C,D to be stepper motors
         # -2.5 -> direction reversed
         # 2.5 -> normal direction
-        m = self.send_command('MT -2.5,-2,-2,-2')
+        m = self.send_command('MT -2.5,-2.5,-2.5,-2.5')
         
         # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
-        m = self.send_command('AG 1,1,1,1')
+        m = self.send_command('AG 2,2,2,2')
         
         # Set holding current to be 25%,n samples after stopping
         #n = 15
@@ -177,12 +176,16 @@ class DMC(object):
         # C prefix indicates commanded position
         self.send_command('GA{}=C{}'.format(Motor.Y2.value, Motor.Y1.value))
         # Set gearing ratio 1:1
-        self.send_command('GR{}=1'.format(Motor.Y2.value))
+        self.send_command('GR{}=-1'.format(Motor.Y2.value))
+        # Enable gantry mode so that axes remained geared even after
+        # ST command
+        self.send_command('GM{}=1'.format(Motor.Y2.value))
+        
         
         # Set control loop rate in units of 1/microseconds
 #        self.send_command("TM 1000")
 
-        self.set_speed(self.speed)
+        self.set_speed(1000)
         #self.set_acceleration(5)
         #self.set_decceleration(5)
 #
@@ -195,10 +198,9 @@ class DMC(object):
     
     # Set the speed in mm/s
     def set_speed(self, speed):
-        self.speed = speed
-        speed = math.floor(speed*CNT_PER_MM)
+        self.speed = math.floor(speed*CNT_PER_MM)
         for mi, m in enumerate(AXES_MOTORS):
-            self.send_command('SP{}={}'.format(m.value, speed))
+            self.send_command('SP{}={}'.format(m.value, self.speed))
     
     # Set acceleration in mm/s^2
     def set_acceleration(self, acc):
@@ -275,11 +277,27 @@ class DMC(object):
                 
                 if r.type == Status.JOGGING:
                     if self.status == Status.STOP:
-                        self.send_command('JG{}={}'.format(AXES_MOTORS[r.axis].value, 
-                                   numpy.sign(r.dir)*self.speed))
-                        self.send_command('BG{}'.format(AXES_MOTORS[r.axis].value))
+                        # If moving forward, enable only the forward axis limit
+                        # or only the backwards limit if moving backwards
+                        motor = AXES_MOTORS[r.axis].value
+                        self.configure_limits(motor, r.forward)
+                        sign = 1
+                        if not r.forward:
+                            sign = -1
+                        self.send_command('JG{}={}'.format(motor, 
+                                   sign*self.speed))
+                        self.send_command('BG{}'.format(motor))
                         self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
+                    
+                if r.type == Status.MOVING:
+                    if self.status == Status.STOP:
+                        # If moving forward, enable only the forward axis limit
+                        # or only the backwards limit if moving backwards
+                        self.send_command('JG{}={}'.format(motor, 
+                                   numpy.sign(r.dir)*self.speed))
+                        self.send_command('BG{}'.format(motor))
+                        self.status = Status.JOGGING
                     
                 if r.type == Status.HOMING:
                     if self.status == Status.STOP:
@@ -319,12 +337,20 @@ class DMC(object):
                             status = Status.NOT_CONFIGURED
                     
                     self.status = status
-                        
-            
+    
+    # Configure limits on the given axis
+    # Forward is True to ENABLE forward motion and False to enable
+    # backward motion
+    def configure_limits(self, motor, forward):
+        return
+        if forward:
+            self.send_command('LD{}=2'.format(motor)) # reverse limit switch disabled
+        else:
+            self.send_command('LD{}=1'.format(motor)) # forward limit switch disabled
             
     
-    def jog(self, axis, direction):
-        self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, direction),
+    def jog(self, axis, forward):
+        self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, forward),
                                False) # False makes it not blocking
     
     def stop(self):
@@ -387,5 +413,7 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.229', True)
+    d = DMC('134.117.39.159', False)
+    d.configure()
+    d.stop()
     #d.configure();

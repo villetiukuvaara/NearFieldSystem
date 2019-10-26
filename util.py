@@ -6,7 +6,7 @@ debug_messages = False
 print_lock = threading.Lock()
 previous_messages = []
 suppressed_messages = []
-N_MESSAGE_IGNORE = 3 # Suppress output for messages that are repeated within the last 6 messages
+N_MESSAGE_IGNORE = 6 # Suppress output for messages that are repeated within the last 6 messages
 
 # Debug print
 def dprint(string):
