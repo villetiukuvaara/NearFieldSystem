@@ -69,9 +69,9 @@ class StopCode(Enum):
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
     
-CNT_PER_MM = 5 # Stepper motor counts per mm
-MAX_SPEED = 100 # Max speed in mm/sec
-MIN_SPEED = 10 # Min speed in mm/sec
+CNT_PER_CM = 4385 # Stepper motor counts per mm
+MAX_SPEED = 5 # Max speed in cm/sec
+MIN_SPEED = 1 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
 
 class DMC(object):
@@ -200,30 +200,30 @@ class DMC(object):
         util.dprint("Motors configured")
         self.status = Status.MOTORS_DISABLED
     
-    # Set the speed in mm/s
+    # Set the speed in cm/s
     def set_speed(self, speed):
         if speed > MAX_SPEED or speed < MIN_SPEED:
             raise Exception('Speed not within limits')
-        self.speed = math.floor(speed*CNT_PER_MM)
+        self.speed = math.floor(speed*CNT_PER_CM)
     
-    # Set acceleration in mm/s^2
+    # Set acceleration in cm/s^2
     def set_acceleration(self, acc):
-        acc = math.floor(acc*CNT_PER_MM)
+        acc = math.floor(acc*CNT_PER_CM)
         for mi, m in enumerate(AXES_MOTORS):
             # Set normal decceleration
             self.send_command('AC{}={}'.format(m.value, acc))
             # Set switch decelleration
             self.send_command('SD{}={}'.format(m.value, acc))
     
-    # Set decceleration in mm/s^2
+    # Set decceleration in cm/s^2
     def set_decceleration(self, acc):
-        acc = math.floor(acc*CNT_PER_MM)
+        acc = math.floor(acc*CNT_PER_CM)
         for mi, m in enumerate(AXES_MOTORS):
             self.send_command('DC{}={}'.format(m.value, acc))
     
     # Return position in mm
     def get_position(self):
-        return [p/CNT_PER_MM for p in self.position_cnt]
+        return [p/CNT_PER_CM for p in self.position_cnt]
     
     # Update position. This is blocking!
     def update_position(self):
@@ -303,7 +303,7 @@ class DMC(object):
                         # or only the backwards limit if moving backwards
                         for mi,m in enumerate(AXES_MOTORS):
                             self.send_command('SP{}={}'.format(m.value, self.speed))
-                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_MM)))
+                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM)))
                             self.configure_limits(m.value, r.coord[mi] > 0)
                         self.send_command('BG')
                         self.status = Status.MOVING_RELATIVE
@@ -391,7 +391,7 @@ class DMC(object):
     def stop(self):
         self.request_queue.put(DMCRequest(Status.STOP), False)
     
-    # move is a vector indicating the relative move in mm
+    # move is a vector indicating the relative move in cm
     def move_relative(self, move):
         self.request_queue.put(DMCRequest(Status.MOVING_RELATIVE).move_params(move),
                                False) # False makes it not blocking
@@ -399,6 +399,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.159', True)
+    d = DMC('134.117.39.102', False)
     d.configure()
     #d.configure();
