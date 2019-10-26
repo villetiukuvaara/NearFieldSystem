@@ -27,10 +27,11 @@ class DMCRequest():
     
     def move_params(self, coord):
         self.coord = coord
+        return self
 
 class Status(Enum):
     NOT_CONFIGURED = 0 # Initial state
-    MOVING = 1
+    MOVING_RELATIVE = 1
     JOGGING = 2
     HOMING = 3
     STOP = 4 # Motors are stopped but enabled (drawing current)
@@ -84,7 +85,10 @@ class DMC(object):
         self.speed = 5000
         self.position_cnt = None # Do not have position count until homing is done
         self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
-        self.stop_code = [StopCode.NONE for a in AXES]
+        if self.dummy:
+            self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
+        else:
+            self.stop_code = [StopCode.NONE for a in AXES]
         self.status = Status.STOP
         self.error_msg = ""
         self.done = True
@@ -128,7 +132,7 @@ class DMC(object):
             if not self.dummy:
                 return self.g.GCommand(command);
             else:
-                return "dummy response"
+                return "1"
         finally:
             self.comm_lock.release()
     
@@ -223,13 +227,12 @@ class DMC(object):
     
     # Update position. This is blocking!
     def update_position(self):
-        if self.dummy:
-            self.position_cnt = [0, 0, 0]
-            return
-        
         x = self.send_command('MG_TP{}'.format(Motor.X.value))
         y = self.send_command('MG_TP{}'.format(Motor.Y1.value))
         z = self.send_command('MG_TP{}'.format(Motor.Z.value))
+        
+        if self.dummy:
+            return
         self.position_cnt = [x,y,z];
     
     # Update stop code. This is blocking!
@@ -237,9 +240,10 @@ class DMC(object):
         sc = []
         for mi, m in enumerate(AXES_MOTORS):
             s = self.send_command('MG_SC{}'.format(m.value))
-            if self.dummy:
-                s = 1
             sc.append(StopCode(float(s)))
+            
+        if self.dummy:
+            return
         self.stop_code = sc
     
     def max_position(self):
@@ -267,6 +271,9 @@ class DMC(object):
                         self.position_cnt = None
                     else:
                         self.send_command('ST')
+                        
+                    if self.dummy:
+                        self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
                     self.status = Status.STOP
                     
                 if r.type == Status.MOTORS_DISABLED:
@@ -290,21 +297,20 @@ class DMC(object):
                         self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
                     
-                if r.type == Status.MOVING:
+                if r.type == Status.MOVING_RELATIVE:
                     if self.status == Status.STOP:
                         # If moving forward, enable only the forward axis limit
                         # or only the backwards limit if moving backwards
-                        self.send_command('JG{}={}'.format(motor, 
-                                   numpy.sign(r.dir)*self.speed))
-                        self.send_command('BG{}'.format(motor))
-                        self.status = Status.JOGGING
+                        for mi,m in enumerate(AXES_MOTORS):
+                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_MM)))
+                        self.send_command('BG')
+                        self.status = Status.MOVING_RELATIVE
                     
                 if r.type == Status.HOMING:
                     if self.status == Status.STOP:
                         for m in AXES_MOTORS:
                             self.set_speed(MAX_SPEED)
                             self.send_command('JG{}={}'.format(m.value, -self.speed))
-                        
                         self.send_command('BG')
                         self.status = Status.HOMING
 
@@ -318,26 +324,21 @@ class DMC(object):
             self.update_position()
             self.update_stop_code()
             
-            if self.status == Status.JOGGING:
-                if any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
-                    pass
-                else:
+            if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE:
+                if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
                         if self.stop_code[mi] == StopCode.DECEL_STOP_FWD_LIM:
                             self.at_limit[mi] = 1
                         elif self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
                             self.at_limit[mi] = -1
-                        elif self.stop_code[mi] == StopCode.DECEL_STOP_ST:
+                        elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
                             self.at_limit[mi] = 0
-                        elif(self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
-                             or self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
-                             or self.stop_code[mi] == StopCode.STOP_ABORT_INPUT
-                             or self.stop_code[mi] == StopCode.DECEL_STOP_OE1):
+                        else:
                             status = Status.NOT_CONFIGURED
                     
                     self.status = status
-    
+                    util.dprint('DMC status change {} > {}'.format(old_status, self.status))
     # Configure limits on the given axis
     # Forward is True to ENABLE forward motion and False to enable
     # backward motion
@@ -355,65 +356,17 @@ class DMC(object):
     
     def stop(self):
         self.request_queue.put(DMCRequest(Status.STOP),
-                               False) # False makes it not blocking
+                               False)
     
-    def move_absolute(self, pos):
-        self.data_lock.acquire()
-        try:
-            if self.status is not Status.STOP:
-                return False
-            self.status = Status.MOVING
-        finally:
-            self.data_lock.release()
+    # move is a vector indicating the relative move in mm
+    def move_relative(self, move):
+        self.request_queue.put(DMCRequest(Status.MOVING_RELATIVE).move_params(move),
+                               False) # False makes it not blocking
         
-        threading.Thread(target = self.move_absolute_task, args = (pos,)).start()
-        return True
-        
-    def move_absolute_task(self, pos):
-        start_pos = self.get_position()
-        
-        # If at a limit switch, make sure that we don't move past it!
-        for i,p in enumerate(pos):
-            if self.at_limit[i] is not 0 and self.at_limit[i]*(pos[i] - start_pos[i]) <= 0:
-                self.status = Status.STOP
-        
-        for mi, m in enumerate(AXES_MOTORS):
-            d = math.floor(pos[mi]*CNT_PER_MM)
-            self.send_command('PR{}={}'.format(m.value, d))
-        self.send_command('BG')
-        
-        if self.dummy:
-            time.sleep(1)
-        else:
-            self.g.GMotionComplete()
-        
-        stop_code = self.read_stop_code()
-        
-        self.data_lock.acquire()
-        try:
-            self.status = Status.STOP
-            self.at_limit = [0, 0, 0]
-            for i,sc in enumerate(stop_code):
-                if sc is StopCode.DECEL_STOP_INDEPENDENT:
-                    continue
-                elif any([sc is s for s in [StopCode.DECEL_STOP_FWD_LIM, StopCode.DECEL_STOP_REV_LIM]]):
-                    self.status = Status.STOP
-                    if pos[i] < start_pos[i]:
-                        self.at_limit[i] = -1
-                    else:
-                        self.at_limit[i] = 1
-                        
-                elif any([sc is s for s in [StopCode.DECEL_STOP_ST, StopCode.STOP_ABORT_INPUT, StopCode.STOP_ABORT_CMD]]):
-                    continue
-                else:
-                    self.status = Status.ERROR
-                    self.error = str("Unexpected " + sc)          
-        finally:
-            self.data_lock.release()
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.159', False)
+    d = DMC('134.117.39.159', True)
     d.configure()
     d.stop()
     #d.configure();
