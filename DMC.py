@@ -70,8 +70,8 @@ AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
     
 CNT_PER_MM = 5 # Stepper motor counts per mm
-MAX_SPEED = 10000
-MIN_SPEED = 1000
+MAX_SPEED = 100 # Max speed in mm/sec
+MIN_SPEED = 10 # Min speed in mm/sec
 SLEEP_TIME = 20 # Update every 20 ms
 
 class DMC(object):
@@ -82,7 +82,7 @@ class DMC(object):
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
         
-        self.speed = 5000
+        self.speed = 0
         self.position_cnt = None # Do not have position count until homing is done
         self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
         if self.dummy:
@@ -189,7 +189,7 @@ class DMC(object):
         # Set control loop rate in units of 1/microseconds
 #        self.send_command("TM 1000")
 
-        self.set_speed(1000)
+        self.set_speed(MIN_SPEED)
         #self.set_acceleration(5)
         #self.set_decceleration(5)
 #
@@ -203,8 +203,6 @@ class DMC(object):
     # Set the speed in mm/s
     def set_speed(self, speed):
         self.speed = math.floor(speed*CNT_PER_MM)
-        for mi, m in enumerate(AXES_MOTORS):
-            self.send_command('SP{}={}'.format(m.value, self.speed))
     
     # Set acceleration in mm/s^2
     def set_acceleration(self, acc):
@@ -263,7 +261,7 @@ class DMC(object):
                 old_status = self.status
                 
                 if r.type == Status.STOP:
-                    if self.status == Status.MOTORS_DISABLED:
+                    if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
                         # If motors are disabled, need to use Serve Here command
                         # to enable, which sets the coordinate system to (0,0,0)
                         self.send_command('SH')
@@ -302,16 +300,26 @@ class DMC(object):
                         # If moving forward, enable only the forward axis limit
                         # or only the backwards limit if moving backwards
                         for mi,m in enumerate(AXES_MOTORS):
+                            self.send_command('SP{}={}'.format(m.value, self.speed))
                             self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_MM)))
+                            self.configure_limits(m.value, r.coord[mi] > 0)
                         self.send_command('BG')
                         self.status = Status.MOVING_RELATIVE
                     
                 if r.type == Status.HOMING:
-                    if self.status == Status.STOP:
+                    if self.status is not Status.NOT_CONFIGURED:
+                        self.send_command('MO') # Disable motors
+                        time.sleep(0.5) # Wait a moment
+                        self.send_command('SH') # Enable motors
+                        self.set_speed(MAX_SPEED)
+                        
                         for m in AXES_MOTORS:
-                            self.set_speed(MAX_SPEED)
                             self.send_command('JG{}={}'.format(m.value, -self.speed))
+                            self.configure_limits(m.value, False)
+    
                         self.send_command('BG')
+                        if self.dummy:
+                            self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
                         self.status = Status.HOMING
 
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
@@ -324,6 +332,9 @@ class DMC(object):
             self.update_position()
             self.update_stop_code()
             
+            old_status = self.status
+            status = self.status
+            
             if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE:
                 if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
@@ -335,15 +346,32 @@ class DMC(object):
                         elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
                             self.at_limit[mi] = 0
                         else:
+                            # Uh oh! Turn off the motors!
+                            self.send_command('MO')
                             status = Status.NOT_CONFIGURED
+                
                     
-                    self.status = status
-                    util.dprint('DMC status change {} > {}'.format(old_status, self.status))
+            if self.status == Status.HOMING:
+                if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
+                    status = Status.STOP
+                    for mi,m in enumerate(AXES_MOTORS):
+                        if self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
+                            self.at_limit[mi] = -1
+                        else:
+                            # Uh oh! Turn off the motors!
+                            self.send_command('MO')
+                            status = Status.NOT_CONFIGURED
+                    if status == Status.STOP:
+                        self.send_command('SH') # Servo here to set point as (0,0,0)
+            
+            if status is not old_status:
+                self.status = status
+                util.dprint('DMC status change {} > {}'.format(old_status, self.status))
+                    
     # Configure limits on the given axis
     # Forward is True to ENABLE forward motion and False to enable
     # backward motion
     def configure_limits(self, motor, forward):
-        return
         if forward:
             self.send_command('LD{}=2'.format(motor)) # reverse limit switch disabled
         else:
@@ -354,9 +382,12 @@ class DMC(object):
         self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, forward),
                                False) # False makes it not blocking
     
+    def home(self):
+        self.request_queue.put(DMCRequest(Status.HOMING), False)
+    
+    
     def stop(self):
-        self.request_queue.put(DMCRequest(Status.STOP),
-                               False)
+        self.request_queue.put(DMCRequest(Status.STOP), False)
     
     # move is a vector indicating the relative move in mm
     def move_relative(self, move):
@@ -368,5 +399,4 @@ if __name__ == "__main__":
     util.debug_messages = True
     d = DMC('134.117.39.159', True)
     d.configure()
-    d.stop()
     #d.configure();
