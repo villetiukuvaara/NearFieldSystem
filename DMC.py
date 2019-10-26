@@ -90,7 +90,7 @@ class DMC(object):
         else:
             self.stop_code = [StopCode.NONE for a in AXES]
         self.status = Status.STOP
-        self.error_msg = ""
+        self.errors = []
         self.done = True
         self.request_queue = queue.Queue()
         self.task = None
@@ -184,6 +184,9 @@ class DMC(object):
         # Enable gantry mode so that axes remained geared even after
         # ST command
         self.send_command('GM{}=1'.format(Motor.Y2.value))
+        
+        # Shut off motors for abort error
+        self.send_command('OE=1')
         
         
         # Set control loop rate in units of 1/microseconds
@@ -368,6 +371,20 @@ class DMC(object):
                     if status == Status.STOP:
                         self.send_command('SH') # Servo here to set point as (0,0,0)
             
+            self.errors = []
+            # Check for error
+            if float(self.send_command('MG_TA0')) != 0:
+                self.errors.append('Undervoltage or over current error')
+            if float(self.send_command('MG_TA1')) != 0:
+                self.errors.append('Hall error')
+            if float(self.send_command('MG_TA2')) != 0:
+                self.errors.append('Peak current error')
+            if float(self.send_command('MG_TA3')) != 0:
+                self.errors.append('ELO')
+                
+            if len(self.errors) > 0:
+                status = Status.NOT_CONFIGURED
+            
             if status is not old_status:
                 self.status = status
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
@@ -401,7 +418,7 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.169', False)
+    d = DMC('134.117.39.38', False)
     d.configure()
     d.stop()
     #d.configure();
