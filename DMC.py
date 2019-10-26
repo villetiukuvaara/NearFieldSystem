@@ -69,7 +69,7 @@ class StopCode(Enum):
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
     
-CNT_PER_CM = 4385 # Stepper motor counts per mm
+CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 5 # Max speed in cm/sec
 MIN_SPEED = 1 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
@@ -82,7 +82,7 @@ class DMC(object):
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
         
-        self.speed = 0
+        self.speed = [0, 0, 0]
         self.position_cnt = None # Do not have position count until homing is done
         self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
         if self.dummy:
@@ -204,26 +204,28 @@ class DMC(object):
     def set_speed(self, speed):
         if speed > MAX_SPEED or speed < MIN_SPEED:
             raise Exception('Speed not within limits')
-        self.speed = math.floor(speed*CNT_PER_CM)
+            
+        for mi,m in enumerate(AXES_MOTORS):
+            self.speed[mi] = math.floor(abs(speed*CNT_PER_CM[mi]))
     
     # Set acceleration in cm/s^2
-    def set_acceleration(self, acc):
-        acc = math.floor(acc*CNT_PER_CM)
-        for mi, m in enumerate(AXES_MOTORS):
-            # Set normal decceleration
-            self.send_command('AC{}={}'.format(m.value, acc))
-            # Set switch decelleration
-            self.send_command('SD{}={}'.format(m.value, acc))
-    
-    # Set decceleration in cm/s^2
-    def set_decceleration(self, acc):
-        acc = math.floor(acc*CNT_PER_CM)
-        for mi, m in enumerate(AXES_MOTORS):
-            self.send_command('DC{}={}'.format(m.value, acc))
+#    def set_acceleration(self, acc):
+#        acc = math.floor(acc*CNT_PER_CM)
+#        for mi, m in enumerate(AXES_MOTORS):
+#            # Set normal decceleration
+#            self.send_command('AC{}={}'.format(m.value, acc))
+#            # Set switch decelleration
+#            self.send_command('SD{}={}'.format(m.value, acc))
+#    
+#    # Set decceleration in cm/s^2
+#    def set_decceleration(self, acc):
+#        acc = math.floor(acc*CNT_PER_CM)
+#        for mi, m in enumerate(AXES_MOTORS):
+#            self.send_command('DC{}={}'.format(m.value, acc))
     
     # Return position in mm
-    def get_position(self):
-        return [p/CNT_PER_CM for p in self.position_cnt]
+    #def get_position(self):
+    #    return [p/CNT_PER_CM for p in self.position_cnt]
     
     # Update position. This is blocking!
     def update_position(self):
@@ -292,7 +294,7 @@ class DMC(object):
                         if not r.forward:
                             sign = -1
                         self.send_command('JG{}={}'.format(motor, 
-                                   sign*self.speed))
+                                   sign*self.speed[r.axis]))
                         self.send_command('BG{}'.format(motor))
                         self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
@@ -302,8 +304,8 @@ class DMC(object):
                         # If moving forward, enable only the forward axis limit
                         # or only the backwards limit if moving backwards
                         for mi,m in enumerate(AXES_MOTORS):
-                            self.send_command('SP{}={}'.format(m.value, self.speed))
-                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM)))
+                            self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
                             self.configure_limits(m.value, r.coord[mi] > 0)
                         self.send_command('BG')
                         self.status = Status.MOVING_RELATIVE
@@ -315,8 +317,8 @@ class DMC(object):
                         self.send_command('SH') # Enable motors
                         self.set_speed(MAX_SPEED)
                         
-                        for m in AXES_MOTORS:
-                            self.send_command('JG{}={}'.format(m.value, -self.speed))
+                        for mi,m in enumerate(AXES_MOTORS):
+                            self.send_command('JG{}={}'.format(m.value, -self.speed[mi]))
                             self.configure_limits(m.value, False)
     
                         self.send_command('BG')
@@ -399,6 +401,7 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.102', False)
+    d = DMC('134.117.39.169', False)
     d.configure()
+    d.stop()
     #d.configure();
