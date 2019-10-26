@@ -202,6 +202,8 @@ class DMC(object):
     
     # Set the speed in mm/s
     def set_speed(self, speed):
+        if speed > MAX_SPEED or speed < MIN_SPEED:
+            raise Exception('Speed not within limits')
         self.speed = math.floor(speed*CNT_PER_MM)
     
     # Set acceleration in mm/s^2
