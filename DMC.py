@@ -28,9 +28,13 @@ class DMCRequest():
     def move_params(self, coord):
         self.coord = coord
         return self
+    
+    def connect_params(self, ip):
+        self.ip = ip
+        return self
 
 class Status(Enum):
-    NOT_CONFIGURED = 0 # Initial state
+    DISCONNECTED = 0 # Initial state
     MOVING_RELATIVE = 1
     JOGGING = 2
     HOMING = 3
@@ -73,11 +77,12 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 5 # Max speed in cm/sec
 MIN_SPEED = 1 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
+DEFAULT_IP = '1.2.3.4'
 
 class DMC(object):
     def __init__(self, dummy):
         self.dummy = dummy
-        self.status = Status.NOT_CONFIGURED
+        self.status = Status.DISCONNECTED
         
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
@@ -89,17 +94,22 @@ class DMC(object):
             self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
         else:
             self.stop_code = [StopCode.NONE for a in AXES]
-        self.status = Status.STOP
+        self.status = Status.DISCONNECTED
         self.errors = []
         self.done = True
         self.request_queue = queue.Queue()
         self.task = None
         self.g = None
+        self.ip_address = DEFAULT_IP
+        
+        self.request_queue = queue.Queue()
+        self.task = threading.Thread(target = self.background_task)
+        self.task.start()
 
     def clean_up(self):
         try:
             self.disable_motors()
-            self.status = Status.NOT_CONFIGURED
+            self.status = Status.DISCONNECTED
             while(self.task is not None and self.task.is_alive()):
                 pass
         except:
@@ -149,55 +159,6 @@ class DMC(object):
     def enable_motors(self):
         self.send_command("SH")
         util.dprint("Motors enabled")
-    
-    def configure(self, ip_address):
-        if not self.dummy:
-            self.g = gclib.py();
-            print('gclib version:', self.g.GVersion())
-            #self.g.GOpen('192.168.0.42 --direct -s ALL')
-            self.g.GOpen(ip_address)
-            print(self.g.GInfo())
-        #self.disable_motors();
-        self.send_command('RS') # Perform reset to power on condition
-        
-        # Set axis A,B,C,D to be stepper motors
-        # -2.5 -> direction reversed
-        # 2.5 -> normal direction
-        m = self.send_command('MT -2.5,-2.5,-2.5,-2.5')
-        
-        # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
-        m = self.send_command('AG 2,2,2,2')
-        
-        # Set holding current to be 25%,n samples after stopping
-        #n = 15
-        #m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
-        
-        # Set Y2 axis to be a slave to Y1 axis
-        # C prefix indicates commanded position
-        self.send_command('GA{}=C{}'.format(Motor.Y2.value, Motor.Y1.value))
-        # Set gearing ratio 1:1
-        self.send_command('GR{}=-1'.format(Motor.Y2.value))
-        # Enable gantry mode so that axes remained geared even after
-        # ST command
-        self.send_command('GM{}=1'.format(Motor.Y2.value))
-        
-        # Shut off motors for abort error
-        self.send_command('OE=1')
-        
-        
-        # Set control loop rate in units of 1/microseconds
-#        self.send_command("TM 1000")
-
-        self.set_speed(MIN_SPEED)
-        #self.set_acceleration(5)
-        #self.set_decceleration(5)
-#
-        # Remove existing requests
-        self.request_queue = queue.Queue()
-        self.task = threading.Thread(target = self.background_task)
-        self.task.start()
-        util.dprint("Motors configured")
-        self.status = Status.MOTORS_DISABLED
     
     # Set the speed in cm/s
     def set_speed(self, speed):
@@ -256,12 +217,65 @@ class DMC(object):
         while True:
             # Run the loop forever, unless it is no longer referenced (via self.task) or the
             # DMC becomes not configured
-            if(threading.current_thread() != self.task or self.status == Status.NOT_CONFIGURED):
+            if threading.current_thread() != self.task:
                 util.dprint('Ending DMC task {}'.format(threading.current_thread()))
                 return # End this task if it's no longer referenced 
             try:
                 r = self.request_queue.get(True, 0.02)
                 old_status = self.status
+                
+                if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED:
+                    if not self.dummy:
+                        self.g = gclib.py();
+                        print('gclib version:', self.g.GVersion())
+                        #self.g.GOpen('192.168.0.42 --direct -s ALL')
+                        self.g.GOpen(r.ip)
+                        print(self.g.GInfo())
+                    
+                    self.ip_address = r.ip
+                    #self.disable_motors();
+                    self.send_command('RS') # Perform reset to power on condition
+                    
+                    # Set axis A,B,C,D to be stepper motors
+                    # -2.5 -> direction reversed
+                    # 2.5 -> normal direction
+                    self.send_command('MT -2.5,-2.5,-2.5,-2.5')
+                    
+                    # Set motor current (0=0.5A, 1=1A, 2=2A, 3=3A)
+                    self.send_command('AG 2,2,2,2')
+                    
+                    # Set holding current to be 25%,n samples after stopping
+                    #n = 15
+                    #m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
+                    
+                    # Set Y2 axis to be a slave to Y1 axis
+                    # C prefix indicates commanded position
+                    self.send_command('GA{}=C{}'.format(Motor.Y2.value, Motor.Y1.value))
+                    # Set gearing ratio 1:1
+                    self.send_command('GR{}=-1'.format(Motor.Y2.value))
+                    # Enable gantry mode so that axes remained geared even after
+                    # ST command
+                    self.send_command('GM{}=1'.format(Motor.Y2.value))
+                    
+                    # Shut off motors for abort error
+                    self.send_command('OE=1')
+
+                    # Set control loop rate in units of 1/microseconds
+                    # self.send_command("TM 1000")
+            
+                    self.set_speed(MIN_SPEED)
+                    #self.set_acceleration(5)
+                    #self.set_decceleration(5)
+                    # Remove existing requests
+                    self.status = Status.MOTORS_DISABLED
+                
+                if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
+                    self.disable_motors()
+                    if self.g is not None:
+                        self.g.GClose()
+                        print('Closed connection to ' + info)
+                    
+                    self.status = Status.DISCONNECTED
                 
                 if r.type == Status.STOP:
                     if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
@@ -270,65 +284,77 @@ class DMC(object):
                         self.send_command('SH')
                         # Set to None to indicate uncalibrated coordinate system
                         self.position_cnt = None
+                    elif status == Status.HOMING:
+                        self.send_command('ST')
+                        self.disable_motors()
+                        self.status = Status.MOTORS_DISABLED
                     else:
                         self.send_command('ST')
+                        self.status = Status.STOP
                         
                     if self.dummy:
                         self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
-                    self.status = Status.STOP
                     
-                if r.type == Status.MOTORS_DISABLED:
+                if r.type == Status.MOTORS_DISABLED and self.status != Status.DISCONNECTED:
                     self.send_command('ST')
                     self.send_command('MO')
                     self.position_cnt = None
                     self.status = Status.MOTORS_DISABLED
                 
-                if r.type == Status.JOGGING:
-                    if self.status == Status.STOP:
-                        # If moving forward, enable only the forward axis limit
-                        # or only the backwards limit if moving backwards
-                        motor = AXES_MOTORS[r.axis].value
-                        self.configure_limits(motor, r.forward)
-                        sign = 1
-                        if not r.forward:
-                            sign = -1
-                        self.send_command('JG{}={}'.format(motor, 
-                                   sign*self.speed[r.axis]))
-                        self.send_command('BG{}'.format(motor))
-                        self.status = Status.JOGGING
+                if r.type == Status.JOGGING and self.status == Status.STOP:
+                    # If moving forward, enable only the forward axis limit
+                    # or only the backwards limit if moving backwards
+                    motor = AXES_MOTORS[r.axis].value
+                    self.configure_limits(motor, r.forward)
+                    sign = 1
+                    if not r.forward:
+                        sign = -1
+                    self.send_command('JG{}={}'.format(motor, 
+                               sign*self.speed[r.axis]))
+                    self.send_command('BG{}'.format(motor))
+                    self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
                     
-                if r.type == Status.MOVING_RELATIVE:
-                    if self.status == Status.STOP:
-                        # If moving forward, enable only the forward axis limit
-                        # or only the backwards limit if moving backwards
-                        for mi,m in enumerate(AXES_MOTORS):
-                            self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
-                            self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
-                            self.configure_limits(m.value, r.coord[mi] > 0)
-                        self.send_command('BG')
-                        self.status = Status.MOVING_RELATIVE
+                if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
+                    # If moving forward, enable only the forward axis limit
+                    # or only the backwards limit if moving backwards
+                    for mi,m in enumerate(AXES_MOTORS):
+                        self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                        self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
+                        self.configure_limits(m.value, r.coord[mi] > 0)
+                    self.send_command('BG')
+                    self.status = Status.MOVING_RELATIVE
                     
-                if r.type == Status.HOMING:
-                    if self.status is not Status.NOT_CONFIGURED:
-                        self.send_command('MO') # Disable motors
-                        time.sleep(0.5) # Wait a moment
-                        self.send_command('SH') # Enable motors
-                        self.set_speed(MAX_SPEED)
-                        
-                        for mi,m in enumerate(AXES_MOTORS):
-                            self.send_command('JG{}={}'.format(m.value, -self.speed[mi]))
-                            self.configure_limits(m.value, False)
-    
-                        self.send_command('BG')
-                        if self.dummy:
-                            self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
-                        self.status = Status.HOMING
+                if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
+                    self.send_command('MO') # Disable motors
+                    time.sleep(0.5) # Wait a moment
+                    self.send_command('SH') # Enable motors
+                    self.set_speed(MAX_SPEED)
+                    
+                    for mi,m in enumerate(AXES_MOTORS):
+                        self.send_command('JG{}={}'.format(m.value, -self.speed[mi]))
+                        self.configure_limits(m.value, False)
+
+                    self.send_command('BG')
+                    if self.dummy:
+                        self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                    self.status = Status.HOMING
 
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
                 
-            except queue.Empty:
+            except queue.Empty as e:
                 pass
+            except gclib.GclibError as e:
+                try:
+                    self.disable_motors()
+                except gclib.GclibError:
+                    pass
+                try:
+                    self.g.GClose()
+                except gclib.GclibError:
+                    pass
+                self.status = Status.DISCONNECTED
+                util.dprint(str(e))
 
             # Need to add except for Gclib ? error
             
@@ -350,8 +376,8 @@ class DMC(object):
                             self.at_limit[mi] = 0
                         else:
                             # Uh oh! Turn off the motors!
-                            self.send_command('MO')
-                            status = Status.NOT_CONFIGURED
+                            self.disable_motors()
+                            status = Status.MOTORS_DISABLED
                 
                     
             if self.status == Status.HOMING:
@@ -362,8 +388,8 @@ class DMC(object):
                             self.at_limit[mi] = -1
                         else:
                             # Uh oh! Turn off the motors!
-                            self.send_command('MO')
-                            status = Status.NOT_CONFIGURED
+                            self.disable_motors()
+                            status = Status.MOTORS_DISABLED
                     if status == Status.STOP:
                         self.send_command('SH') # Servo here to set point as (0,0,0)
             
@@ -380,7 +406,7 @@ class DMC(object):
                     self.errors.append('ELO')
                 
             if len(self.errors) > 0:
-                status = Status.NOT_CONFIGURED
+                status = Status.DISCONNECTED
             
             if status is not old_status:
                 self.status = status
@@ -396,6 +422,13 @@ class DMC(object):
             self.send_command('LD{}=1'.format(motor)) # forward limit switch disabled
             
     
+    def connect(self, ip_address=DEFAULT_IP):
+        self.request_queue.put(DMCRequest(Status.MOTORS_DISABLED).connect_params(ip_address),
+                               False) # False makes it not blocking
+        
+    def disconnect(self):
+        self.request_queue.put(DMCRequest(Status.DISCONNECTED), False) # False makes it not blocking
+        
     def jog(self, axis, forward):
         self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, forward),
                                False) # False makes it not blocking
@@ -416,6 +449,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(True)
-    d.configure('134.117.39.38')
-    d.stop()
+    #d.connect('134.117.39.38')
+    #d.stop()
     #d.configure();
