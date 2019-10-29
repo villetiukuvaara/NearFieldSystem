@@ -75,7 +75,7 @@ MIN_SPEED = 1 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
 
 class DMC(object):
-    def __init__(self, ip_address, dummy):
+    def __init__(self, dummy):
         self.dummy = dummy
         self.status = Status.NOT_CONFIGURED
         
@@ -95,16 +95,6 @@ class DMC(object):
         self.request_queue = queue.Queue()
         self.task = None
         self.g = None
-        
-        if self.dummy:
-            #self.task = DMCDummyTask(self)
-            return
-        else:
-            self.g = gclib.py();
-            print('gclib version:', self.g.GVersion())
-            #self.g.GOpen('192.168.0.42 --direct -s ALL')
-            self.g.GOpen(ip_address)
-            print(self.g.GInfo())
 
     def clean_up(self):
         try:
@@ -160,7 +150,13 @@ class DMC(object):
         self.send_command("SH")
         util.dprint("Motors enabled")
     
-    def configure(self):
+    def configure(self, ip_address):
+        if not self.dummy:
+            self.g = gclib.py();
+            print('gclib version:', self.g.GVersion())
+            #self.g.GOpen('192.168.0.42 --direct -s ALL')
+            self.g.GOpen(ip_address)
+            print(self.g.GInfo())
         #self.disable_motors();
         self.send_command('RS') # Perform reset to power on condition
         
@@ -371,16 +367,17 @@ class DMC(object):
                     if status == Status.STOP:
                         self.send_command('SH') # Servo here to set point as (0,0,0)
             
-            self.errors = []
-            # Check for error
-            if float(self.send_command('MG_TA0')) != 0:
-                self.errors.append('Undervoltage or over current error')
-            if float(self.send_command('MG_TA1')) != 0:
-                self.errors.append('Hall error')
-            if float(self.send_command('MG_TA2')) != 0:
-                self.errors.append('Peak current error')
-            if float(self.send_command('MG_TA3')) != 0:
-                self.errors.append('ELO')
+            if not self.dummy:
+                self.errors = []
+                # Check for error
+                if float(self.send_command('MG_TA0')) != 0:
+                    self.errors.append('Undervoltage or over current error')
+                if float(self.send_command('MG_TA1')) != 0:
+                    self.errors.append('Hall error')
+                if float(self.send_command('MG_TA2')) != 0:
+                    self.errors.append('Peak current error')
+                if float(self.send_command('MG_TA3')) != 0:
+                    self.errors.append('ELO')
                 
             if len(self.errors) > 0:
                 status = Status.NOT_CONFIGURED
@@ -418,7 +415,7 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC('134.117.39.38', False)
-    d.configure()
+    d = DMC(True)
+    d.configure('134.117.39.38')
     d.stop()
     #d.configure();

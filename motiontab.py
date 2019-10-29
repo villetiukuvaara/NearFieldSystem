@@ -28,10 +28,15 @@ class MotionTab(tk.Frame):
         self.gui_ready = False
         tk.Frame.__init__(self, parent)             # do superclass init
         self.dmc = dmc
+        self.last_dmc_status = self.dmc.status;
         self.pack()
         self.make_widgets()                      # attach widgets to self
-        self.joystick_enable(False)
+        self.enable_joystick(False)
+        self.enable_connect(True)
+        self.force_update = False
         self.gui_ready = True
+        
+        self.after(50, self.background_task)
         
     def make_widgets(self):
         position_group = tk.LabelFrame(self, text="Move Axes")
@@ -65,12 +70,36 @@ class MotionTab(tk.Frame):
         self.speed_scale.pack(side=tk.LEFT)
         
         # Label frame for starting calibration of CNC frame
-        calibrate_group = tk.LabelFrame(self, text="Calibration")
-        calibrate_group.pack(fill=tk.BOTH,expand=1)
-        self.calibration_button = tk.Button(calibrate_group, text="Calibrate",command=self.calibrate)
-        self.calibration_button.pack()
-        self.calibration_label = tk.Label(calibrate_group)
-        self.calibration_label.pack()
+        dmc_group = tk.LabelFrame(self, text="Motion Controller")
+        dmc_group.pack(fill=tk.BOTH,expand=1)
+        #dmc_group_left = tk.Frame(dmc_group)
+        #dmc_group_left.pack(side=tk.LEFT)
+        ip_add = tk.Frame(dmc_group)
+        ip_add.pack(side=tk.TOP)
+        tk.Label(ip_add, text="IP Address: ").pack(side=tk.LEFT)
+        self.ip_strings = []
+        self.ip_entries = []
+        
+        for i in range(4):
+            if i > 0:
+                tk.Label(ip_add, text=".").pack(side=tk.LEFT)
+            self.ip_strings.append(tk.StringVar())
+            self.ip_entries.append(tk.Entry(ip_add, textvariable=self.ip_strings[i], validate="key",
+                    validatecommand=(self.register(self.validate_num), "%P"),
+                    width=3))
+            self.ip_entries[i].pack(side=tk.LEFT)
+            
+        connect_group = tk.Frame(dmc_group)
+        connect_group.pack(side=tk.TOP)
+        self.connect_button = tk.Button(connect_group, text="Connect", command=self.connect_callback)
+        self.connect_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.disconnect_button = tk.Button(connect_group, text="Disconnect")
+        self.disconnect_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.home_button = tk.Button(connect_group, text="Home", command=self.home_callback)
+        self.home_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        self.calibration_label = tk.Label(dmc_group)
+        self.calibration_label.pack(side=tk.TOP)
         self.set_calibration_state(False)
         
         # Label frame for configuring measurement region
@@ -147,7 +176,7 @@ class MotionTab(tk.Frame):
                 self.step_labels[ax_n].config(text=MotionTab.STEP_FORMAT.format(step))
                 
     def update_current_position(self):
-        pos = self.dmc.get_position()
+        pos = [0,0,0]#self.dmc.get_position()
         for ax_n, ax in enumerate(AXES):
             t = ax + ': ' + MotionTab.POS_FORMAT.format(pos[ax_n])
             self.current_pos_labels[ax_n].config(text=t)
@@ -172,6 +201,13 @@ class MotionTab(tk.Frame):
            self.update_steps()
         return True
     
+    def validate_num(self, P):
+        if(len(P) == 0):
+            return True
+        
+        m =  re.match('^[0-9]+$', P)
+        return m is not None and len(m.group(0)) < 4
+    
     def joystick_btn_callback(self, axis, dir, press):#(self, axis, dir, begin):
         print('{:} {:} {:}'.format(axis, dir, press))
         
@@ -188,7 +224,7 @@ class MotionTab(tk.Frame):
         p.append(int(self.entry_strings[(axis, 'points')].get()))
         return p
     
-    def joystick_enable(self, enable):
+    def enable_joystick(self, enable):
         if enable:
             state = tk.NORMAL
         else:
@@ -203,7 +239,55 @@ class MotionTab(tk.Frame):
             self.calibration_label.config(text="Calibration OK", fg="black")
         else:
             self.calibration_label.config(text="Calibration required", fg="red")
+    
+    def connect_callback(self):
+        ip = ''
+        for i in range(4):
+            s = self.ip_strings[i].get()
+            if len(s) == 0:
+                tk.messagebox.showerror(title="Connection Error", message="IP Address is not valid")
+                return
+            if i > 0:
+                ip += '.'
+            ip += s
+        self.dmc.configure(ip)
+        self.force_update = True
+    
+    def home_callback(self):
+        self.dmc.home()
             
-    def calibrate(self):
-        tk.messagebox.showinfo("Calibration Wizard", "Calibration happens now...")
-        self.set_calibration_state(True)
+    
+    def enable_connect(self, enable):
+        if enable:
+            self.connect_button.config(state=tk.NORMAL)
+            self.disconnect_button.config(state=tk.DISABLED)
+            self.home_button.config(state=tk.DISABLED)
+            
+            for i in range(4):
+                self.ip_entries[i].config(state=tk.NORMAL)
+        else:
+            self.connect_button.config(state=tk.DISABLED)
+            self.disconnect_button.config(state=tk.NORMAL)
+            self.home_button.config(state=tk.NORMAL)
+            
+            for i in range(4):
+                self.ip_entries[i].config(state=tk.DISABLED)
+            
+                    
+    def background_task(self):
+        status = self.dmc.status
+        if self.last_dmc_status is not status or self.force_update:
+            if status is Status.NOT_CONFIGURED:
+                self.enable_connect(True)
+                self.enable_joystick(False)
+            if status is Status.MOTORS_DISABLED:
+                self.enable_connect(False)
+                self.enable_joystick(False)
+            if status is Status.STOP:
+                self.enable_connect(False)
+                self.enable_joystick(True)
+            self.force_update = False
+                
+        self.after(50, self.background_task)
+        
+        

@@ -13,7 +13,7 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win = tk.Tk()
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
-        self.dmc = DMC('134.117.39.229', True)
+        self.dmc = DMC(True)
         self.make_widgets()
         self.gui_ready = True
 
@@ -38,4 +38,5 @@ class NearFieldGUI:                            # not a widget subbclass
 
 if __name__ == '__main__':
     util.debug_messages = True
-    NearFieldGUI().win.mainloop()
+    n = NearFieldGUI()
+    n.win.mainloop()
