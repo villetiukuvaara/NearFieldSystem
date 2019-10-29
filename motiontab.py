@@ -35,11 +35,12 @@ class MotionTab(tk.Frame):
         self.force_update = False
         self.gui_ready = True
         
+        self.force_update = True
         self.after(50, self.background_task)
         
     def make_widgets(self):
         position_group = tk.LabelFrame(self, text="Move Axes")
-        position_group.pack(side=tk.LEFT,fill=tk.BOTH)
+        position_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=5,pady=5,ipadx=5,ipady=5)
         move_group = tk.Frame(position_group)
         move_group.pack(side=tk.TOP)
         
@@ -68,12 +69,16 @@ class MotionTab(tk.Frame):
             
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
-        self.speed_scale = tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL)
+        self.speed_scale = tk.Scale(move_group,
+                                    from_=DMC.MIN_SPEED,to_=DMC.MAX_SPEED,
+                                    resolution=(DMC.MAX_SPEED-DMC.MIN_SPEED)/4,
+                                    orient=tk.VERTICAL,
+                                    command=self.speed_callback)
         self.speed_scale.pack(side=tk.LEFT)
         
         # Label frame for starting calibration of CNC frame
         dmc_group = tk.LabelFrame(self, text="Motion Controller")
-        dmc_group.pack(fill=tk.BOTH,expand=1)
+        dmc_group.pack(fill=tk.BOTH,expand=1,padx=5,pady=5,ipadx=5,ipady=5)
         #dmc_group_left = tk.Frame(dmc_group)
         #dmc_group_left.pack(side=tk.LEFT)
         ip_add = tk.Frame(dmc_group)
@@ -100,16 +105,13 @@ class MotionTab(tk.Frame):
         self.connect_button.pack(side=tk.LEFT, padx=5, pady=5)
         self.disconnect_button = tk.Button(connect_group, text="Disconnect", command=self.disconnect_callback)
         self.disconnect_button.pack(side=tk.LEFT, padx=5, pady=5)
-        self.home_button = tk.Button(connect_group, text="Home", command=self.home_callback)
-        self.home_button.pack(side=tk.LEFT, padx=5, pady=5)
 
         self.calibration_label = tk.Label(dmc_group)
         self.calibration_label.pack(side=tk.TOP)
-        self.set_calibration_state(False)
         
         # Label frame for configuring measurement region
         config_region_group = tk.LabelFrame(self, text="Configure Region");
-        config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT)
+        config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT,padx=5,pady=5,ipadx=5,ipady=5)
         
         config_type_group = tk.Frame(config_region_group)
         config_type_group.pack(side=tk.TOP)
@@ -123,6 +125,9 @@ class MotionTab(tk.Frame):
             t = ''
             self.current_pos_labels.append(tk.Label(position_group_2, text=t))
             self.current_pos_labels[ax_n].pack(side=tk.TOP)
+        
+        self.home_button = tk.Button(position_group_2, text="Home", command=self.home_callback)
+        self.home_button.pack(side=tk.TOP, padx=5, pady=5)
         
         self.update_current_position()
         
@@ -166,7 +171,7 @@ class MotionTab(tk.Frame):
 #                 self.entry_strings[(ax, 'step')].set('1')
             
     def update_steps(self):
-        for ax_n, ax in enumerate(AXES):
+        for ax_n, ax in enumerate(DMC.AXES):
             try:
                 p = self.get_region(ax)
             except ValueError:
@@ -231,12 +236,6 @@ class MotionTab(tk.Frame):
         self.speed_scale.config(state=state)
         for b in self.joystick_buttons:
             b.config(state=state)
-     
-    def set_calibration_state(self, ok):
-        if ok:
-            self.calibration_label.config(text="Calibration OK", fg="black")
-        else:
-            self.calibration_label.config(text="Calibration required", fg="red")
     
     def connect_callback(self):
         ip = ''
@@ -279,9 +278,13 @@ class MotionTab(tk.Frame):
             return
 
         if press:
+            self.dmc.set_speed(self.speed_scale.get())
             self.dmc.jog(DMC.AXES[axis], forward)
         else:
             self.dmc.stop()
+    
+    def speed_callback(self, speed):
+        self.dmc.set_speed(self.speed_scale.get())
                     
     def background_task(self):
         status = self.dmc.status
@@ -289,12 +292,15 @@ class MotionTab(tk.Frame):
             if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)
                 self.enable_joystick(False)
+                self.calibration_label.config(text='DMC needs to be connected', fg='red')
             if status is DMC.Status.MOTORS_DISABLED:
                 self.enable_connect(False)
                 self.enable_joystick(False)
+                self.calibration_label.config(text='DMC needs to be homed', fg='red')
             if status is DMC.Status.STOP:
                 self.enable_connect(False)
                 self.enable_joystick(True)
+                self.calibration_label.config(text='Ready for measurement', fg='black')
             self.force_update = False
             self.last_dmc_status = status
                 
