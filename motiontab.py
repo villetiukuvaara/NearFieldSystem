@@ -131,8 +131,6 @@ class MotionTab(tk.Frame):
         self.stop_button = tk.Button(position_group_2, text="Stop", fg= "Red", command=self.stop_callback)
         self.stop_button.pack(side=tk.TOP, padx=5, pady=5)
         
-        self.update_current_position()
-        
         # Frame with start, stop, step values entry
         config_vals_group = tk.Frame(config_region_group)
         config_vals_group.pack(side=tk.BOTTOM);
@@ -187,8 +185,10 @@ class MotionTab(tk.Frame):
                 step = (p[1]-p[0])/p[2];
                 self.step_labels[ax_n].config(text=MotionTab.STEP_FORMAT.format(step))
                 
-    def update_current_position(self):
-        pos = [0,0,0]#self.dmc.get_position()
+    def update_current_stats(self):
+        pos = self.dmc.get_position()
+        if pos is None:
+            pos = [0,0,0]
         for ax_n, ax in enumerate(DMC.AXES):
             t = ax + ': ' + MotionTab.POS_FORMAT.format(pos[ax_n])
             self.current_pos_labels[ax_n].config(text=t)
@@ -295,6 +295,8 @@ class MotionTab(tk.Frame):
                     
     def background_task(self):
         status = self.dmc.status
+        self.update_current_stats()
+        
         if self.last_dmc_status != status or self.force_update:
             if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)

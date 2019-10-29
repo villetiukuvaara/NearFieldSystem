@@ -7,6 +7,7 @@ import math
 import threading
 import time
 import queue
+import random
 
 class Motor(Enum):
     X = 'A'
@@ -183,9 +184,14 @@ class DMC(object):
 #        for mi, m in enumerate(AXES_MOTORS):
 #            self.send_command('DC{}={}'.format(m.value, acc))
     
-    # Return position in mm
-    #def get_position(self):
-    #    return [p/CNT_PER_CM for p in self.position_cnt]
+    # Return position in cm
+    def get_position(self):
+        if self.status == Status.DISCONNECTED or self.status == Status.MOTORS_DISABLED:
+            return None
+        pos = []
+        for mi,m in enumerate(self.position_cnt):
+            pos.append(m/CNT_PER_CM[mi])
+        return pos
     
     # Update position. This is blocking!
     def update_position(self):
@@ -194,8 +200,9 @@ class DMC(object):
         z = self.send_command('MG_TP{}'.format(Motor.Z.value))
         
         if self.dummy:
-            return
-        self.position_cnt = [x,y,z];
+            self.position_cnt = [0,0,0]
+        else:
+            self.position_cnt = [x,y,z]
     
     # Update stop code. This is blocking!
     def update_stop_code(self):
