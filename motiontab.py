@@ -6,7 +6,7 @@ from tkinter import ttk
 from enum import Enum
 import util
 import re
-from DMC import *
+import DMC
 
 class MotionTab(tk.Frame):
     
@@ -17,7 +17,6 @@ class MotionTab(tk.Frame):
     #STEP_PRECISION = 5 # Number of digits after . for steps
     MAX_STEPS = 999 # Maximum number of steps
     
-    AXES = ['X', 'Y', 'Z']
     # DEFAULT_VALS[AXIS][POS]
     DEFAULT_VALS = {'X':[0,5,100], 'Y':[0,5,100], 'Z':[0,5,1]}
     POS_FORMAT = '{:.3f}'
@@ -54,16 +53,19 @@ class MotionTab(tk.Frame):
         self.joystick_buttons = []
         for ax, loc in joystick_positions.items():
             btn = tk.Button(joystick_group,text=ax+'-')
+            # Forward movement button
             self.joystick_buttons.append(btn)
+            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, True, True))
+            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, True, False))
             btn.grid(row=loc[0][0], column=loc[0][1])
-            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, 1, True))
-            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, 1, False))
             
+            # Backwards movement button
             btn = tk.Button(joystick_group,text=ax+'+')
             self.joystick_buttons.append(btn)
+            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, False, True))
+            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, False, False))
             btn.grid(row=loc[1][0], column=loc[1][1])
-            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, -1, True))
-            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, -1, False))
+            
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
         self.speed_scale = tk.Scale(move_group,from_=1,to_=5,orient=tk.VERTICAL)
@@ -93,7 +95,7 @@ class MotionTab(tk.Frame):
         connect_group.pack(side=tk.TOP)
         self.connect_button = tk.Button(connect_group, text="Connect", command=self.connect_callback)
         self.connect_button.pack(side=tk.LEFT, padx=5, pady=5)
-        self.disconnect_button = tk.Button(connect_group, text="Disconnect")
+        self.disconnect_button = tk.Button(connect_group, text="Disconnect", command=self.disconnect_callback)
         self.disconnect_button.pack(side=tk.LEFT, padx=5, pady=5)
         self.home_button = tk.Button(connect_group, text="Home", command=self.home_callback)
         self.home_button.pack(side=tk.LEFT, padx=5, pady=5)
@@ -113,7 +115,7 @@ class MotionTab(tk.Frame):
         position_group_2.pack(side=tk.BOTTOM)
         
         self.current_pos_labels = []
-        for ax_n, ax in enumerate(AXES):
+        for ax_n, ax in enumerate(DMC.AXES):
             #t = ax + ': ' + MotionTab.POS_FORMAT.format(0)
             t = ''
             self.current_pos_labels.append(tk.Label(position_group_2, text=t))
@@ -134,7 +136,7 @@ class MotionTab(tk.Frame):
         self.entry_strings = {}
         self.entries = {}
         self.step_labels = [];
-        for ax_n, ax in enumerate(AXES):
+        for ax_n, ax in enumerate(DMC.AXES):
             
             # Labels for axis columns
             tk.Label(config_vals_group,text="{} axis".format(ax)).grid(row=1,column=ax_n+2)
@@ -177,7 +179,7 @@ class MotionTab(tk.Frame):
                 
     def update_current_position(self):
         pos = [0,0,0]#self.dmc.get_position()
-        for ax_n, ax in enumerate(AXES):
+        for ax_n, ax in enumerate(DMC.AXES):
             t = ax + ': ' + MotionTab.POS_FORMAT.format(pos[ax_n])
             self.current_pos_labels[ax_n].config(text=t)
         
@@ -207,13 +209,6 @@ class MotionTab(tk.Frame):
         
         m =  re.match('^[0-9]+$', P)
         return m is not None and len(m.group(0)) < 4
-    
-    def joystick_btn_callback(self, axis, dir, press):#(self, axis, dir, begin):
-        print('{:} {:} {:}'.format(axis, dir, press))
-        
-        
-        if not press:
-            self.update_current_position()
         
     
     # Returns (start, stop, n_points)
@@ -250,13 +245,14 @@ class MotionTab(tk.Frame):
             if i > 0:
                 ip += '.'
             ip += s
-        self.dmc.configure(ip)
-        self.force_update = True
+        self.dmc.connect(ip)
+        
+    def disconnect_callback(self):
+        self.dmc.disconnect()
     
     def home_callback(self):
         self.dmc.home()
             
-    
     def enable_connect(self, enable):
         if enable:
             self.connect_button.config(state=tk.NORMAL)
@@ -272,21 +268,32 @@ class MotionTab(tk.Frame):
             
             for i in range(4):
                 self.ip_entries[i].config(state=tk.DISABLED)
-            
+                
+    def joystick_btn_callback(self, axis, forward, press):#(self, axis, dir, begin):
+        print('{:} {:} {:}'.format(axis, forward, press))
+        
+        if self.dmc.status == DMC.Status.DISCONNECTED or self.dmc.status == DMC.Status.HOMING:
+            return
+
+        if press:
+            self.dmc.jog(DMC.AXES[axis], forward)
+        else:
+            self.dmc.stop()
                     
     def background_task(self):
         status = self.dmc.status
-        if self.last_dmc_status is not status or self.force_update:
-            if status is Status.NOT_CONFIGURED:
+        if self.last_dmc_status != status or self.force_update:
+            if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)
                 self.enable_joystick(False)
-            if status is Status.MOTORS_DISABLED:
+            if status is DMC.Status.MOTORS_DISABLED:
                 self.enable_connect(False)
                 self.enable_joystick(False)
-            if status is Status.STOP:
+            if status is DMC.Status.STOP:
                 self.enable_connect(False)
                 self.enable_joystick(True)
             self.force_update = False
+            self.last_dmc_status = status
                 
         self.after(50, self.background_task)
         

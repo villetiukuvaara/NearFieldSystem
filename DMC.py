@@ -277,7 +277,7 @@ class DMC(object):
                     
                     self.status = Status.DISCONNECTED
                 
-                if r.type == Status.STOP:
+                if r.type == Status.STOP and self.status != Status.DISCONNECTED:
                     if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
                         # If motors are disabled, need to use Serve Here command
                         # to enable, which sets the coordinate system to (0,0,0)
@@ -312,6 +312,10 @@ class DMC(object):
                     self.send_command('JG{}={}'.format(motor, 
                                sign*self.speed[r.axis]))
                     self.send_command('BG{}'.format(motor))
+                    
+                    if self.dummy:
+                        self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                        
                     self.status = Status.JOGGING
                     # Ignore the request for JOG mode in other cases, e.g. if moving
                     
@@ -337,7 +341,7 @@ class DMC(object):
 
                     self.send_command('BG')
                     if self.dummy:
-                        self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                        self.stop_code = [StopCode.DECEL_STOP_REV_LIM for i in range(3)]
                     self.status = Status.HOMING
 
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
