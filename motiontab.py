@@ -128,6 +128,8 @@ class MotionTab(tk.Frame):
         
         self.home_button = tk.Button(position_group_2, text="Home", command=self.home_callback)
         self.home_button.pack(side=tk.TOP, padx=5, pady=5)
+        self.stop_button = tk.Button(position_group_2, text="Stop", fg= "Red", command=self.stop_callback)
+        self.stop_button.pack(side=tk.TOP, padx=5, pady=5)
         
         self.update_current_position()
         
@@ -254,12 +256,16 @@ class MotionTab(tk.Frame):
     
     def home_callback(self):
         self.dmc.home()
+    
+    def stop_callback(self):
+        self.dmc.stop()
             
     def enable_connect(self, enable):
         if enable:
             self.connect_button.config(state=tk.NORMAL)
             self.disconnect_button.config(state=tk.DISABLED)
             self.home_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.DISABLED)
             
             for i in range(4):
                 self.ip_entries[i].config(state=tk.NORMAL)
@@ -267,6 +273,7 @@ class MotionTab(tk.Frame):
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.home_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.NORMAL)
             
             for i in range(4):
                 self.ip_entries[i].config(state=tk.DISABLED)
