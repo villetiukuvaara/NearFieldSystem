@@ -77,7 +77,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 5 # Max speed in cm/sec
 MIN_SPEED = 1 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '1.2.3.4'
+DEFAULT_IP = '134.117.39.38'
 
 class DMC(object):
     def __init__(self, dummy):

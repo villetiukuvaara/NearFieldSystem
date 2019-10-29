@@ -82,10 +82,13 @@ class MotionTab(tk.Frame):
         self.ip_strings = []
         self.ip_entries = []
         
+        
+        ip = DMC.DEFAULT_IP.split('.')
         for i in range(4):
             if i > 0:
                 tk.Label(ip_add, text=".").pack(side=tk.LEFT)
             self.ip_strings.append(tk.StringVar())
+            self.ip_strings[i].set(ip[i])
             self.ip_entries.append(tk.Entry(ip_add, textvariable=self.ip_strings[i], validate="key",
                     validatecommand=(self.register(self.validate_num), "%P"),
                     width=3))
