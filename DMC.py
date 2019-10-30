@@ -290,8 +290,8 @@ class DMC(object):
                     self.send_command('AG 2,2,2,2')
                     
                     # Set holding current to be 25%,n samples after stopping
-                    #n = 15
-                    #m = self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
+                    n = 15
+                    self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
                     
                     # Set Y2 axis to be a slave to Y1 axis
                     # C prefix indicates commanded position
@@ -500,6 +500,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
-    d.connect('134.117.39.213')
+    d.connect('134.117.39.26')
     d.stop()
     #d.configure();
