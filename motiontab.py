@@ -39,7 +39,7 @@ class MotionTab(tk.Frame):
         self.after(50, self.background_task)
         
     def make_widgets(self):
-        position_group = tk.LabelFrame(self, text="Move Axes")
+        position_group = tk.LabelFrame(self, text="Jog Axes")
         position_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=5,pady=5,ipadx=5,ipady=5)
         move_group = tk.Frame(position_group)
         move_group.pack(side=tk.TOP)
@@ -82,7 +82,7 @@ class MotionTab(tk.Frame):
         self.speed_scale.pack(side=tk.LEFT)
         
         # Label frame for starting calibration of CNC frame
-        dmc_group = tk.LabelFrame(self, text="Motion Controller")
+        dmc_group = tk.LabelFrame(self, text="Motor Controller")
         dmc_group.pack(fill=tk.BOTH,expand=1,padx=5,pady=5,ipadx=5,ipady=5)
         #dmc_group_left = tk.Frame(dmc_group)
         #dmc_group_left.pack(side=tk.LEFT)
@@ -115,8 +115,8 @@ class MotionTab(tk.Frame):
         self.calibration_label.pack(side=tk.TOP)
         
         # Label frame for configuring measurement region
-        config_region_group = tk.LabelFrame(self, text="Configure Region");
-        config_region_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT,padx=5,pady=5,ipadx=5,ipady=5)
+        config_region_group = tk.LabelFrame(self, text="Configure Measurement Region");
+        config_region_group.pack(fill=tk.BOTH,expand=tk.YES,side=tk.LEFT,padx=5,pady=5,ipadx=5,ipady=5)
         
         config_type_group = tk.Frame(config_region_group)
         config_type_group.pack(side=tk.TOP)
@@ -164,8 +164,10 @@ class MotionTab(tk.Frame):
                 self.entry_strings[(ax, pos)] = tk.StringVar()
                 self.entry_strings[(ax, pos)].set(
                         format_str[pos_n].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
-                self.entries[(ax, pos)] = tk.Entry(config_vals_group, textvariable=self.entry_strings[(ax, pos)], validate="key",
-                    validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
+                self.entries[(ax, pos)] = tk.Entry(config_vals_group,
+                             textvariable=self.entry_strings[(ax, pos)], validate="key",
+                             width=10,
+                             validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
                 self.entries[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
         
 #    def change_region_type(self):
@@ -310,7 +312,7 @@ class MotionTab(tk.Frame):
             if status is DMC.Status.MOTORS_DISABLED:
                 self.enable_connect(False)
                 self.enable_joystick(False)
-                self.calibration_label.config(text='Motor controller needs to be homed', fg='red')
+                self.calibration_label.config(text='Homing needs to be performed', fg='red')
             if status is DMC.Status.STOP:
                 self.enable_connect(False)
                 self.enable_joystick(True)
