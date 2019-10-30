@@ -224,14 +224,18 @@ class DMC(object):
         while True:
             # Run the loop forever, unless it is no longer referenced (via self.task) or the
             # DMC becomes not configured
+            
             if threading.current_thread() != self.task:
                 util.dprint('Ending DMC task {}'.format(threading.current_thread()))
                 return # End this task if it's no longer referenced 
+                
             try:
                 r = self.request_queue.get(True, 0.02)
                 old_status = self.status
                 
                 if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED:
+                    self.errors = []
+                    
                     if not self.dummy:
                         self.g = gclib.py();
                         print('gclib version:', self.g.GVersion())
@@ -356,15 +360,7 @@ class DMC(object):
             except queue.Empty as e:
                 pass
             except gclib.GclibError as e:
-                try:
-                    self.disable_motors()
-                except gclib.GclibError:
-                    pass
-                try:
-                    self.g.GClose()
-                except gclib.GclibError:
-                    pass
-                self.status = Status.DISCONNECTED
+                self.errors.append(str(e))
                 util.dprint(str(e))
 
             # Need to add except for Gclib ? error
@@ -404,8 +400,7 @@ class DMC(object):
                     if status == Status.STOP:
                         self.send_command('SH') # Servo here to set point as (0,0,0)
             
-            if not self.dummy:
-                self.errors = []
+            if not self.dummy and self.status != Status.DISCONNECTED:
                 # Check for error
                 if float(self.send_command('MG_TA0')) != 0:
                     self.errors.append('Undervoltage or over current error')
@@ -417,6 +412,14 @@ class DMC(object):
                     self.errors.append('ELO')
                 
             if len(self.errors) > 0:
+                try:
+                    self.disable_motors()
+                except gclib.GclibError:
+                    pass
+                try:
+                    self.g.GClose()
+                except gclib.GclibError:
+                    pass
                 status = Status.DISCONNECTED
             
             if status is not old_status:
