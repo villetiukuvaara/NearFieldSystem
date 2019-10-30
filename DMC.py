@@ -84,8 +84,8 @@ HOMING_DIRECTION = [-1, -1, 1]
 HOMING_STOP_CODE = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
     
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 5 # Max speed in cm/sec
-MIN_SPEED = 1 # Min speed in cm/sec
+MAX_SPEED = 0.3 # Max speed in cm/sec
+MIN_SPEED = 0.2 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
 DEFAULT_IP = '134.117.39.38'
 
@@ -215,14 +215,16 @@ class DMC(object):
     
     # Update position. This is blocking!
     def update_position(self):
-        x = self.send_command('MG_TP{}'.format(Motor.X.value))
-        y = self.send_command('MG_TP{}'.format(Motor.Y1.value))
-        z = self.send_command('MG_TP{}'.format(Motor.Z.value))
+        cnt = [0,0,0]
+        x = self.send_command('MG_TD{}'.format(Motor.X.value))
+        y = self.send_command('MG_TD{}'.format(Motor.Y1.value))
+        z = self.send_command('MG_TD{}'.format(Motor.Z.value))
         
         if self.dummy:
             self.position_cnt = [0,0,0]
         else:
-            self.position_cnt = [x,y,z]
+            cnt = [x,y,x]
+            self.position_cnt = [float(a) for a in cnt]
     
     # Update stop code. This is blocking!
     def update_stop_code(self):
@@ -259,7 +261,7 @@ class DMC(object):
                         print('gclib version:', self.g.GVersion())
                         #self.g.GOpen('192.168.0.42 --direct -s ALL')
                         self.g.GOpen(r.ip)
-                        print(self.g.GInfo())
+                        print("Connected to:" + self.g.GInfo())
                     
                     self.ip_address = r.ip
                     #self.disable_motors();
@@ -323,8 +325,9 @@ class DMC(object):
                 if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
                     self.disable_motors()
                     if self.g is not None:
+                        info = self.g.GInfo()
                         self.g.GClose()
-                        print('Closed connection to ' + info)
+                        util.dprint('Closed connection to ' + info)
                     
                     self.status = Status.DISCONNECTED
                 
@@ -497,6 +500,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
-    d.connect('134.117.39.168')
-    #d.stop()
+    d.connect('134.117.39.213')
+    d.stop()
     #d.configure();
