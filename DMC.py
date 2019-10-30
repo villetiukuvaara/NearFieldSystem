@@ -50,6 +50,7 @@ class ErrorType(Enum):
     DMC_PEAK_CURRENT = 'Peak current error'
     DMC_ELO = 'ELO'
     GCLIB = 'GCLIB'
+    OTHER = 'Other error'
 
 class StopCode(Enum):
     RUNNING_INDEPENDENT = 0
@@ -215,16 +216,15 @@ class DMC(object):
     
     # Update position. This is blocking!
     def update_position(self):
-        cnt = [0,0,0]
-        x = self.send_command('MG_TD{}'.format(Motor.X.value))
-        y = self.send_command('MG_TD{}'.format(Motor.Y1.value))
-        z = self.send_command('MG_TD{}'.format(Motor.Z.value))
+        cnt = []
+        for mi, m in enumerate(AXES_MOTORS):
+            s = self.send_command('MG_TD{}'.format(m.value))
+            cnt.append(s)
         
         if self.dummy:
             self.position_cnt = [0,0,0]
         else:
-            cnt = [x,y,x]
-            self.position_cnt = [float(a) for a in cnt]
+            self.position_cnt = [math.floor(float(i)) for i in cnt]
     
     # Update stop code. This is blocking!
     def update_stop_code(self):
@@ -427,9 +427,8 @@ class DMC(object):
                         elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
                             self.at_limit[mi] = 0
                         else:
-                            # Uh oh! Turn off the motors!
-                            self.disable_motors()
-                            status = Status.MOTORS_DISABLED
+                            # Uh oh!
+                            self.errors[ErrorType.OTHER] = 'Unexpected stop code during motion'
                 
                     
             if self.status == Status.HOMING:
@@ -439,11 +438,13 @@ class DMC(object):
                         if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
                             self.at_limit[mi] = HOMING_DIRECTION[mi]
                         else:
-                            # Uh oh! Turn off the motors!
-                            self.disable_motors()
-                            status = Status.MOTORS_DISABLED
-                    if status == Status.STOP:
-                        self.send_command('SH') # Servo here to set point as (0,0,0)
+                            # Uh oh!
+                            self.errors[ErrorType.OTHER] = 'Unexpected stop code during homing'
+                    if len(self.errors) == 0:
+                        # Set this point as the origin
+                        for mi,m in enumerate(AXES_MOTORS):
+                            self.send_command('DP{}=0'.format(m.value))
+                        #self.send_command('SH') # Servo here to set point as (0,0,0)
             
             if not self.dummy and self.status != Status.DISCONNECTED:
                 self.update_errors()
