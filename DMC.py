@@ -44,6 +44,13 @@ class Status(Enum):
     REQUEST_FAIL = 6
     ERROR = 7
 
+class ErrorType(Enum):
+    DMC_VOLTAGE_CURRENT = 'Undervoltage or over current error'
+    DMC_HALL = 'Hall error'
+    DMC_PEAK_CURRENT = 'Peak current error'
+    DMC_ELO = 'ELO'
+    GCLIB = 'GCLIB'
+
 class StopCode(Enum):
     RUNNING_INDEPENDENT = 0
     DECEL_STOP_INDEPENDENT = 1
@@ -98,7 +105,7 @@ class DMC(object):
         else:
             self.stop_code = [StopCode.NONE for a in AXES]
         self.status = Status.DISCONNECTED
-        self.errors = []
+        self.errors = {} # Key is error type and value is message (string)
         self.done = True
         self.request_queue = queue.Queue()
         self.task = None
@@ -195,6 +202,17 @@ class DMC(object):
             pos.append(m/CNT_PER_CM[mi])
         return pos
     
+    def update_errors(self):
+        if float(self.send_command('MG_TA0')) != 0:
+            self.errors[ErrorType.DMC_VOLTAGE_CURRENT] = ErrorType.DMC_VOLTAGE_CURRENT.value
+        if float(self.send_command('MG_TA1')) != 0:
+            self.errors[ErrorType.DMC_HALL] = ErrorType.DMC_HALL.value
+        if float(self.send_command('MG_TA2')) != 0:
+            self.errors[ErrorType.DMC_PEAK_CURRENT] = ErrorType.DMC_PEAK_CURRENT.value
+        if float(self.send_command('MG_TA3')) != 0:
+            self.errors[ErrorType.DMC_ELO] = ErrorType.DMC_ELO.value
+        
+    
     # Update position. This is blocking!
     def update_position(self):
         x = self.send_command('MG_TP{}'.format(Motor.X.value))
@@ -230,14 +248,12 @@ class DMC(object):
             if threading.current_thread() != self.task:
                 util.dprint('Ending DMC task {}'.format(threading.current_thread()))
                 return # End this task if it's no longer referenced 
-                
+            
             try:
                 r = self.request_queue.get(True, 0.02)
                 old_status = self.status
                 
                 if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED:
-                    self.errors = []
-                    
                     if not self.dummy:
                         self.g = gclib.py();
                         print('gclib version:', self.g.GVersion())
@@ -248,6 +264,20 @@ class DMC(object):
                     self.ip_address = r.ip
                     #self.disable_motors();
                     self.send_command('RS') # Perform reset to power on condition
+
+                    self.errors = {}
+                    self.update_errors()
+                    
+                    # Procedure for clearing ELO error is MO, WT2, and then SH
+                    # Do the first two here, and then SH later after configuring
+                    # the motors
+                    if len(self.errors) > 0:
+                        # Recover from ELO
+                        self.send_command('MO')
+                        try:
+                            self.send_command('WT2')
+                        except gclib.GclibError:
+                           pass
                     
                     # Set axis A,B,C,D to be stepper motors
                     # -2.5 -> direction reversed
@@ -271,7 +301,7 @@ class DMC(object):
                     self.send_command('GM{}=1'.format(Motor.Y2.value))
                     
                     # Shut off motors for abort error
-                    self.send_command('OE=1')
+                    #self.send_command('OE=1')
 
                     # Set control loop rate in units of 1/microseconds
                     # self.send_command("TM 1000")
@@ -279,7 +309,15 @@ class DMC(object):
                     self.set_speed(MIN_SPEED)
                     #self.set_acceleration(5)
                     #self.set_decceleration(5)
-                    # Remove existing requests
+                    
+                    # Perform final part of error clearing
+                    if len(self.errors) > 0:
+                        # Recover from ELO
+                        self.send_command('SH')
+                        time.sleep(0.2)
+                        self.send_command('MO')
+                        self.errors = {}
+                       
                     self.status = Status.MOTORS_DISABLED
                 
                 if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
@@ -297,7 +335,8 @@ class DMC(object):
                         self.send_command('SH')
                         # Set to None to indicate uncalibrated coordinate system
                         self.position_cnt = None
-                    elif status == Status.HOMING:
+                        self.status = Status.STOP
+                    elif self.status == Status.HOMING:
                         self.send_command('ST')
                         self.disable_motors()
                         self.status = Status.MOTORS_DISABLED
@@ -362,13 +401,14 @@ class DMC(object):
             except queue.Empty as e:
                 pass
             except gclib.GclibError as e:
-                self.errors.append(str(e))
-                util.dprint(str(e))
+                self.errors[ErrorType.GCLIB] = 'gclib.GclibError:' + str(e)
+                util.dprint('gclib.GclibError:' + str(e))
 
             # Need to add except for Gclib ? error
             
-            self.update_position()
-            self.update_stop_code()
+            if self.status is not Status.DISCONNECTED:
+                self.update_position()
+                self.update_stop_code()
             
             old_status = self.status
             status = self.status
@@ -403,15 +443,7 @@ class DMC(object):
                         self.send_command('SH') # Servo here to set point as (0,0,0)
             
             if not self.dummy and self.status != Status.DISCONNECTED:
-                # Check for error
-                if float(self.send_command('MG_TA0')) != 0:
-                    self.errors.append('Undervoltage or over current error')
-                if float(self.send_command('MG_TA1')) != 0:
-                    self.errors.append('Hall error')
-                if float(self.send_command('MG_TA2')) != 0:
-                    self.errors.append('Peak current error')
-                if float(self.send_command('MG_TA3')) != 0:
-                    self.errors.append('ELO')
+                self.update_errors()
                 
             if len(self.errors) > 0:
                 try:
@@ -464,7 +496,7 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(True)
-    #d.connect('134.117.39.38')
+    d = DMC(False)
+    d.connect('134.117.39.168')
     #d.stop()
     #d.configure();
