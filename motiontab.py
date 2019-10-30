@@ -53,10 +53,8 @@ class MotionTab(tk.Frame):
                                    'Z': [(3,4),(1,4)]}
         self.joystick_buttons = []
         for ax, loc in joystick_positions.items():
-            print('Adding ' + ax)
-            btn = tk.Button(joystick_group,text=ax+'-')
-            
             # Backwards movement button
+            btn = tk.Button(joystick_group,text=ax+'-')
             self.joystick_buttons.append(btn)
             # ax=ax "hack" forces lambda to capture the current value of ax
             # https://stackoverflow.com/questions/2295290/what-do-lambda-function-closures-capture

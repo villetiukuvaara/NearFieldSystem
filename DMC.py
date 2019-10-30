@@ -88,7 +88,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 0.3 # Max speed in cm/sec
 MIN_SPEED = 0.2 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.38'
+DEFAULT_IP = '134.117.39.26'
 
 class DMC(object):
     def __init__(self, dummy):
@@ -290,8 +290,8 @@ class DMC(object):
                     self.send_command('AG 2,2,2,2')
                     
                     # Set holding current to be 25%,n samples after stopping
-                    n = 15
-                    self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
+                    #n = 15
+                    #self.send_command('LC -{0},-{0},-{0},-{0}'.format(n))
                     
                     # Set Y2 axis to be a slave to Y1 axis
                     # C prefix indicates commanded position
@@ -358,7 +358,7 @@ class DMC(object):
                 
                 if r.type == Status.JOGGING and self.status == Status.STOP:
                     # Only move if not at limit
-                    if (self.at_limit[r.axis] <= 0 and r.forward) or (self.at_limit[r.axis] >= 0 and not r.forward):
+                    if (r.forward and self.at_limit[r.axis] <= 0) or (not r.forward and self.at_limit[r.axis] >= 0):
                         motor = AXES_MOTORS[r.axis].value
                         self.configure_limits(motor, r.forward)
                         sign = 1
@@ -501,6 +501,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
-    d.connect('134.117.39.26')
+    d.connect(DEFAULT_IP)
     d.stop()
     #d.configure();
