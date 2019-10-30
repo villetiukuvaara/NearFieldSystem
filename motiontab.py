@@ -53,19 +53,24 @@ class MotionTab(tk.Frame):
                                    'Z': [(3,4),(1,4)]}
         self.joystick_buttons = []
         for ax, loc in joystick_positions.items():
+            print('Adding ' + ax)
             btn = tk.Button(joystick_group,text=ax+'-')
-            # Forward movement button
-            self.joystick_buttons.append(btn)
-            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, True, True))
-            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, True, False))
-            btn.grid(row=loc[0][0], column=loc[0][1])
             
             # Backwards movement button
+            self.joystick_buttons.append(btn)
+            # ax=ax "hack" forces lambda to capture the current value of ax
+            # https://stackoverflow.com/questions/2295290/what-do-lambda-function-closures-capture
+            btn.bind('<Button-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, False, True))
+            btn.bind('<ButtonRelease-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, False, False))
+            btn.grid(row=loc[0][0], column=loc[0][1])
+            
+            # Forwards movement button
             btn = tk.Button(joystick_group,text=ax+'+')
             self.joystick_buttons.append(btn)
-            btn.bind('<Button-1>',lambda e: self.joystick_btn_callback(ax, False, True))
-            btn.bind('<ButtonRelease-1>',lambda e: self.joystick_btn_callback(ax, False, False))
+            btn.bind('<Button-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, True, True))
+            btn.bind('<ButtonRelease-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, True, False))
             btn.grid(row=loc[1][0], column=loc[1][1])
+            ax = 'F'
             
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
@@ -278,10 +283,8 @@ class MotionTab(tk.Frame):
             for i in range(4):
                 self.ip_entries[i].config(state=tk.DISABLED)
                 
-    def joystick_btn_callback(self, axis, forward, press):#(self, axis, dir, begin):
-        print('{:} {:} {:}'.format(axis, forward, press))
-        
-        if self.dmc.status == DMC.Status.DISCONNECTED or self.dmc.status == DMC.Status.HOMING:
+    def joystick_btn_callback(self, axis, forward, press):#(self, axis, dir, begin):  
+        if self.dmc.status != DMC.Status.STOP and self.dmc.status != DMC.Status.JOGGING:
             return
 
         if press:
