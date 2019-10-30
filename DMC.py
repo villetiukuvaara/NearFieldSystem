@@ -73,6 +73,8 @@ class StopCode(Enum):
     
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
+HOMING_DIRECTION = [-1, -1, 1]
+HOMING_STOP_CODE = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
     
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 5 # Max speed in cm/sec
@@ -347,12 +349,12 @@ class DMC(object):
                     self.set_speed(MAX_SPEED)
                     
                     for mi,m in enumerate(AXES_MOTORS):
-                        self.send_command('JG{}={}'.format(m.value, -self.speed[mi]))
-                        self.configure_limits(m.value, False)
+                        self.send_command('JG{}={}'.format(m.value, HOMING_DIRECTION[mi]*self.speed[mi]))
+                        self.configure_limits(m.value, HOMING_DIRECTION[mi] > 0)
 
                     self.send_command('BG')
                     if self.dummy:
-                        self.stop_code = [StopCode.DECEL_STOP_REV_LIM for i in range(3)]
+                        self.stop_code = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
                     self.status = Status.HOMING
 
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
@@ -391,8 +393,8 @@ class DMC(object):
                 if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
-                        if self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
-                            self.at_limit[mi] = -1
+                        if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
+                            self.at_limit[mi] = HOMING_DIRECTION[mi]
                         else:
                             # Uh oh! Turn off the motors!
                             self.disable_motors()
