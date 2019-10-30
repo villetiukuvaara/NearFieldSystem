@@ -315,22 +315,22 @@ class DMC(object):
                     self.status = Status.MOTORS_DISABLED
                 
                 if r.type == Status.JOGGING and self.status == Status.STOP:
-                    # If moving forward, enable only the forward axis limit
-                    # or only the backwards limit if moving backwards
-                    motor = AXES_MOTORS[r.axis].value
-                    self.configure_limits(motor, r.forward)
-                    sign = 1
-                    if not r.forward:
-                        sign = -1
-                    self.send_command('JG{}={}'.format(motor, 
-                               sign*self.speed[r.axis]))
-                    self.send_command('BG{}'.format(motor))
-                    
-                    if self.dummy:
-                        self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                    # Only move if not at limit
+                    if (self.at_limit[r.axis] <= 0 and r.forward) or (self.at_limit[r.axis] >= 0 and not r.forward):
+                        motor = AXES_MOTORS[r.axis].value
+                        self.configure_limits(motor, r.forward)
+                        sign = 1
+                        if not r.forward:
+                            sign = -1
+                        self.send_command('JG{}={}'.format(motor, 
+                                   sign*self.speed[r.axis]))
+                        self.send_command('BG{}'.format(motor))
                         
-                    self.status = Status.JOGGING
-                    # Ignore the request for JOG mode in other cases, e.g. if moving
+                        if self.dummy:
+                            self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                            
+                        self.status = Status.JOGGING
+                        # Ignore the request for JOG mode in other cases, e.g. if moving
                     
                 if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
                     # If moving forward, enable only the forward axis limit
