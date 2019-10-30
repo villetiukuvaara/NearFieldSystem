@@ -62,14 +62,14 @@ class MotionTab(tk.Frame):
             # https://stackoverflow.com/questions/2295290/what-do-lambda-function-closures-capture
             btn.bind('<Button-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, False, True))
             btn.bind('<ButtonRelease-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, False, False))
-            btn.grid(row=loc[0][0], column=loc[0][1])
+            btn.grid(row=loc[0][0], column=loc[0][1],padx=5,pady=5)
             
             # Forwards movement button
             btn = tk.Button(joystick_group,text=ax+'+')
             self.joystick_buttons.append(btn)
             btn.bind('<Button-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, True, True))
             btn.bind('<ButtonRelease-1>',lambda e,ax=ax: self.joystick_btn_callback(ax, True, False))
-            btn.grid(row=loc[1][0], column=loc[1][1])
+            btn.grid(row=loc[1][0], column=loc[1][1],padx=5,pady=5)
             ax = 'F'
             
         
@@ -122,19 +122,21 @@ class MotionTab(tk.Frame):
         config_type_group.pack(side=tk.TOP)
         
         position_group_2 = tk.Frame(position_group)
-        position_group_2.pack(side=tk.BOTTOM)
+        position_group_2.pack(side=tk.TOP)
         
         self.current_pos_labels = []
         for ax_n, ax in enumerate(DMC.AXES):
             #t = ax + ': ' + MotionTab.POS_FORMAT.format(0)
             t = ''
             self.current_pos_labels.append(tk.Label(position_group_2, text=t))
-            self.current_pos_labels[ax_n].pack(side=tk.TOP)
+            self.current_pos_labels[ax_n].pack(side=tk.LEFT)
         
-        self.home_button = tk.Button(position_group_2, text="Home", command=self.home_callback)
-        self.home_button.pack(side=tk.TOP, padx=5, pady=5)
-        self.stop_button = tk.Button(position_group_2, text="Stop", fg= "Red", command=self.stop_callback)
-        self.stop_button.pack(side=tk.TOP, padx=5, pady=5)
+        position_group_3 = tk.Frame(position_group)
+        position_group_3.pack(side=tk.TOP)
+        self.home_button = tk.Button(position_group_3, text="Home", command=self.home_callback)
+        self.home_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.stop_button = tk.Button(position_group_3, text="Stop", fg= "Red", command=self.stop_callback)
+        self.stop_button.pack(side=tk.LEFT, padx=5, pady=5)
         
         # Frame with start, stop, step values entry
         config_vals_group = tk.Frame(config_region_group)
@@ -304,11 +306,11 @@ class MotionTab(tk.Frame):
             if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)
                 self.enable_joystick(False)
-                self.calibration_label.config(text='DMC needs to be connected', fg='red')
+                self.calibration_label.config(text='Motor controller is disconnected', fg='red')
             if status is DMC.Status.MOTORS_DISABLED:
                 self.enable_connect(False)
                 self.enable_joystick(False)
-                self.calibration_label.config(text='DMC needs to be homed', fg='red')
+                self.calibration_label.config(text='Motor controller needs to be homed', fg='red')
             if status is DMC.Status.STOP:
                 self.enable_connect(False)
                 self.enable_joystick(True)
