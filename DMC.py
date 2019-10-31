@@ -85,10 +85,10 @@ HOMING_DIRECTION = [-1, -1, 1]
 HOMING_STOP_CODE = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
     
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 0.3 # Max speed in cm/sec
-MIN_SPEED = 0.2 # Min speed in cm/sec
+MAX_SPEED = 4 # Max speed in cm/sec
+MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.26'
+DEFAULT_IP = '134.117.39.108'
 
 class DMC(object):
     def __init__(self, dummy):
@@ -100,7 +100,9 @@ class DMC(object):
         
         self.speed = [0, 0, 0]
         self.position_cnt = None # Do not have position count until homing is done
-        self.at_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
+        self.previous_limit = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
+        self.current_limit = [0, 0, 0]
+        self.movement_direction = [0,0,0]
         if self.dummy:
             self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
         else:
@@ -236,6 +238,19 @@ class DMC(object):
         if self.dummy:
             return
         self.stop_code = sc
+        
+    def update_limit(self):
+        lim = []
+        for mi, m in enumerate(AXES_MOTORS):
+            sp = self.send_command('MG_SP{}'.format(m.value))
+            sp = float(sp)
+            if sp > 0:
+                l = self.send_command('MG_LF{}'.format(m.value))
+                lim.append(1 if l is 0 else 0)
+            else:
+                l = self.send_command('MG_LR{}'.format(m.value))
+                lim.append(-1 if l is 0 else 0)
+        self.current_limit = lim
     
     def max_position(self):
         return [10, 20, 30];
@@ -358,7 +373,9 @@ class DMC(object):
                 
                 if r.type == Status.JOGGING and self.status == Status.STOP:
                     # Only move if not at limit
-                    if (r.forward and self.at_limit[r.axis] <= 0) or (not r.forward and self.at_limit[r.axis] >= 0):
+                    if (r.forward and self.current_limit[r.axis] <= 0) or (not r.forward and self.current_limit[r.axis] <= 0):
+                        self.movement_direction = [0,0,0]
+                        self.movement_direction[r.axis] = 1 if r.forward else -1
                         motor = AXES_MOTORS[r.axis].value
                         self.configure_limits(motor, r.forward)
                         sign = 1
@@ -412,6 +429,7 @@ class DMC(object):
             if self.status is not Status.DISCONNECTED:
                 self.update_position()
                 self.update_stop_code()
+                self.update_limit()
             
             old_status = self.status
             status = self.status
@@ -421,17 +439,24 @@ class DMC(object):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
                         if self.stop_code[mi] == StopCode.DECEL_STOP_FWD_LIM:
-                            self.at_limit[mi] = 1
+                            self.previous_limit[mi] = 1
                         elif self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
-                            self.at_limit[mi] = -1
+                            self.previous_limit[mi] = -1
                         elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
-                            self.at_limit[mi] = 0
+                            self.previous_limit[mi] = 0
                         else:
                             # Uh oh!
                             self.errors[ErrorType.OTHER] = 'Unexpected stop code during motion'
+                        self.previous_limit = self.current_limit
+                elif self.current_limits[0] != self.previous_limit:
+                    self.configure_limits()
+                    self.previous_limit = self.current_limit
                 
                     
             if self.status == Status.HOMING:
+                if self.at_limit[0] == 0 and self.previous_limit != 0:
+                    self.configure_limits(Motor.X.value)
+                
                 if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
@@ -467,11 +492,22 @@ class DMC(object):
     # Configure limits on the given axis
     # Forward is True to ENABLE forward motion and False to enable
     # backward motion
-    def configure_limits(self, motor, forward):
-        if forward:
-            self.send_command('LD{}=2'.format(motor)) # reverse limit switch disabled
+    def configure_limits(self):
+        # If at X axis limit, must disable both because they use the same sensor
+        # and motion cannot start! It should be re-enabled as soon as the switch
+        # is no longer active
+        if self.current_limit[0] != 0:
+            self.send_command('LD{}=3'.format(motor))
+        elif self.movement_direction[0] >= 0:
+             self.send_command('LD{}=2'.format(motor)) # reverse limit switch disabled
         else:
             self.send_command('LD{}=1'.format(motor)) # forward limit switch disabled
+        
+        # Both limit switches enabled for Y axis
+        self.send_command('LD{}=0',Motor.Y1.value)
+        
+        # Only the forward limit switch is enabled for Z
+        self.send_command('LD{}=2',Motor.Z.value)
             
     
     def connect(self, ip_address=DEFAULT_IP):
@@ -503,4 +539,4 @@ if __name__ == "__main__":
     d = DMC(False)
     d.connect(DEFAULT_IP)
     d.stop()
-    #d.configure();
+    d.configure();
