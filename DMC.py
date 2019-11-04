@@ -88,7 +88,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.108'
+DEFAULT_IP = '134.117.39.102'
 
 class DMC(object):
     def __init__(self, dummy):
@@ -248,7 +248,7 @@ class DMC(object):
             # x axis is a special case since both limit inputs are connected to
             # the same sensor
             if mi == 0:
-                if self.previous_limits[0] != 0 and lf == 1:
+                if lf == 1:
                     lim.append(0)
                 else:
                     lim.append(self.previous_limits[0])
@@ -371,6 +371,8 @@ class DMC(object):
                         self.status = Status.MOTORS_DISABLED
                     else:
                         self.send_command('ST')
+                        self.update_limits()
+                        self.previous_limits = self.current_limits
                         self.status = Status.STOP
                         
                     if self.dummy:
@@ -554,6 +556,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(True)
+    d = DMC(False)
     d.connect(DEFAULT_IP)
     d.stop()
