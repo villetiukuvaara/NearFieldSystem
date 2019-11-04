@@ -12,7 +12,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.44'
+DEFAULT_IP = '134.117.39.248'
 
 class Motor(Enum):
     X = 'A'
@@ -84,7 +84,7 @@ class StopCode(Enum):
     
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
-HOMING_DIRECTION = [-1, -1, 1]
+HOMING_DIRECTION = [False, False, True] # Backwards, backwards, forwards
 HOMING_STOP_CODE = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
 
 class DMC(object):
@@ -97,7 +97,6 @@ class DMC(object):
         
         self.speed = [0, 0, 0]
         self.position_cnt = None # Do not have position count until homing is done
-        #self.previous_limits = [0, 0, 0] # -1 means at negative limit and +1 means at positive limit
         self.current_limits = [0, 0, 0]
         self.movement_direction = [0,0,0]
         if self.dummy:
@@ -421,13 +420,50 @@ class DMC(object):
                     self.send_command('MO') # Disable motors
                     time.sleep(0.5) # Wait a moment
                     self.send_command('SH') # Enable motors
-                    self.set_speed(MAX_SPEED)
+                    self.set_speed(MAX_SPEED/4)
+                    
+                    # For x axis, need to check which limit we are at
+                    if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active
+                        
+                        # Try moving 1 cm in +X, and see if limit is still active
+                        self.current_limits[0] = -1 # Force movement enabled in +X
+                        self.movement_direction[0] = True # Move forward
+                        self.configure_limits()
+                        
+                        self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
+                        self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1*CNT_PER_CM[0])))
+                        self.send_command('BG{}'.format(m.value))
+                        self.g.GMotionComplete(Motor.X.value)
+                        
+                        # If still at limit, it was actually the forward limit!
+                        if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:
+                            self.current_limits[0] = 1
+                        else:
+                            self.current_limits[0] = 0
+
+                    # Move each axis back a bit
+                    self.movement_direction = [not m for m in HOMING_DIRECTION]
+                    sign = [1 if forward else -1 for forward in self.movement_direction]
+                    self.configure_limits()
                     
                     for mi,m in enumerate(AXES_MOTORS):
-                        self.send_command('JG{}={}'.format(m.value, HOMING_DIRECTION[mi]*self.speed[mi]))
-                        self.configure_limits(m.value, HOMING_DIRECTION[mi] > 0)
-
-                    self.send_command('BG')
+                        try:
+                            self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                            self.send_command('PR{}={}'.format(m.value, sign[mi]*math.floor(1*CNT_PER_CM[mi])))
+                            self.send_command('BG{}'.format(m.value))
+                        except gclib.GclibError:
+                            pass
+                    
+                    self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
+                    
+                    self.movement_direction = HOMING_DIRECTION
+                    sign = [1 if forward else -1 for forward in self.movement_direction]
+                    self.configure_limits()
+                      
+                    for mi,m in enumerate(AXES_MOTORS):
+                        self.send_command('JG{}={}'.format(m.value, sign[mi]*self.speed[mi]))
+                        self.send_command('BG{}'.format(m.value))
+                    
                     if self.dummy:
                         self.stop_code = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
                     self.status = Status.HOMING
@@ -470,14 +506,11 @@ class DMC(object):
                 
                     
             if self.status == Status.HOMING:
-                if self.current_limits[0] != self.previous_limits[0]:
-                    self.configure_limits()
-                
                 if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
                         if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
-                            self.previous_limits[mi] = HOMING_DIRECTION[mi]
+                            self.current_limits[mi] = HOMING_DIRECTION[mi]
                         else:
                             # Uh oh!
                             self.errors[ErrorType.OTHER] = 'Unexpected stop code during homing'
