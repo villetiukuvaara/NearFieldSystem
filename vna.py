@@ -77,7 +77,7 @@ CAL_STEPS = {CalStep.BEGIN: CalibrationStepDetails("", [CalStep.OPEN_P1, CalStep
              CalStep.LOAD_P2: CalibrationStepDetails("Connect LOAD at port 2", [CalStep.THRU, CalStep.INCOMPLETE_QUIT]),
              CalStep.THRU: CalibrationStepDetails("Connect THRU", [CalStep.ISOLATION, CalStep.INCOMPLETE_QUIT]),
              CalStep.ISOLATION: CalibrationStepDetails("Run isolation calibration?", [None, None]),
-             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None])}
+             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None, None])}
    
 
 class VNA():
@@ -85,10 +85,11 @@ class VNA():
     Interface with a GPIB instrument using the Visa library.
     Use it to do full 2 port calibrations, set measurement parameters and get measurement data.
     '''
-    def __init__(self):
+    def __init__(self, dummy=False):
         '''Creates a Visa resource manager object to manage the instruments connected to the computer.
         Then initializes communication with a message based instrument like the vna used.
         It uses the name provided by the resource manager.'''
+        self.dummy =  dummy
         self.cal_ok = False
         self.cal_params = FreqSweepParams(0,0,0,0)
         
@@ -204,6 +205,13 @@ class VNA():
         self.cal_ok = False
         util.dprint('Done cal step {} with option={}'.format(cal_step, option))
         
+        self.cal_ok = False
+        
+        if self.dummy:
+            if cal_step == CalStep.ISOLATION:
+                self.cal_ok = True
+            return
+        
         if cal_step == CalStep.BEGIN:
             self.vna.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
             self.vna.write("CALIFUL2;")
@@ -244,10 +252,26 @@ class VNA():
             self.vna.write("OPC?;REVM;") #Reverse lod match
             self.vna.read()
             self.vna.write("TRAD;") #End of transmission calibration
-        
-        if cal_step == CalStep.ISOLATION:
+        elif cal_step == CalStep.ISOLATION:
             self.cal_params.isolation_cal = option
-            self.cal_ok = True
+            if self.cal_params.isolation_cal:
+                self.vna.write("ISOL;") #Starts isolation calibration
+                self.vna.write("AVERFACT10;") #Sets average factor of 10
+                self.vna.write("AVEROON;") #Turns on averaging
+                self.vna.write("OPC?;REVI;") #Reverse isolation
+                self.vna.read()
+                self.vna.write("OPC?;FWDI;") #Forward isolation
+                self.vna.read()
+                self.vna.write("ISOD;AVEROOFF;") #Completes isolation calibration and turns off averaging
+                self.vna.write("OPC?;SAV2;") #Completes the calibration
+                self.vna.read()
+            else:
+                self.vna.write("OMII;") #Omit isolation
+                self.vna.write("OPC?;SAV2;") #Complete the calibration
+                self.vna.read()
+            
+            self.cal_ok = True   
+            
        
     def set_calibration_params(self, params):
         self.cal_params = params

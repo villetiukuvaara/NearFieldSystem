@@ -20,7 +20,7 @@ class VNATab(tk.Frame):
     def __init__(self, parent=None):
         self.gui_ready = False
         tk.Frame.__init__(self, parent)             # do superclass init
-        self.vna = vna.VNA()
+        self.vna = vna.VNA(True)
         self.pack()
         self.make_widgets()                      # attach widgets to self
         self.cal_step_done = False
@@ -32,12 +32,16 @@ class VNATab(tk.Frame):
         calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,expand=1)
         cal_btn_group = tk.Frame(calibrate_group)
         cal_btn_group.pack(side=tk.TOP)
+        self.connect_button = tk.Button(cal_btn_group, text="Connect",command=lambda: self.connect_btn_callback(True))
+        self.connect_button.grid(row=1,column=1,padx=5,pady=5)
+        self.disconnect_button = tk.Button(cal_btn_group, text="Disconnect",command=lambda: self.connect_btn_callback(False))
+        self.disconnect_button.grid(row=1,column=2,padx=5,pady=5)
         self.calibration_button = tk.Button(cal_btn_group, text="Calibration wizard",command=self.calibrate_btn_callback)
-        self.calibration_button.pack(side=tk.LEFT,padx=5,pady=5)
+        self.calibration_button.grid(row=2,column=1,columnspan=2,padx=5,pady=5)
         self.load_button = tk.Button(cal_btn_group, text="Load calibration")
-        self.load_button.pack(side=tk.LEFT,padx=5,pady=5)
+        self.load_button.grid(row=3,column=1,padx=5,pady=5)
         self.save_button = tk.Button(cal_btn_group, text="Save calibration")
-        self.save_button.pack(side=tk.LEFT,padx=5,pady=5)
+        self.save_button.grid(row=3,column=2,padx=5,pady=5)
         
         self.calibration_label = tk.Label(calibrate_group)
         self.calibration_label.pack()
@@ -108,9 +112,16 @@ class VNATab(tk.Frame):
         #tk.messagebox.showinfo("Calibration Wizard", "Calibration happens now...")
         self.cal_dialog = CalDialog(self)
         self.cal_dialog.make_widgets_config()
-        
+       
+    def connect_btn_callback(self, connect):
+        return
+
+    def connection_task(self):
+        return
+    
     def calibration_monitor(self):
         if self.cal_step_done:
+            self.update_cal_info()
             step = self.next_cal_step
             
             if step is None:
