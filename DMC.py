@@ -7,13 +7,14 @@ import math
 import threading
 import time
 import queue
+import traceback
 
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.248'
+DEFAULT_IP = '134.117.39.160'
 
 class Motor(Enum):
     X = 'A'
@@ -134,8 +135,7 @@ class DMC(object):
 
     def __del__(self):
         self.clean_up()
-                
-             
+    
     def send_command(self, command):
         util.dprint(command)
         self.comm_lock.acquire()
@@ -204,6 +204,8 @@ class DMC(object):
         return pos
     
     def update_errors(self):
+        if self.dummy:
+            return
         if float(self.send_command('MG_TA0')) != 0:
             self.errors[ErrorType.DMC_VOLTAGE_CURRENT] = ErrorType.DMC_VOLTAGE_CURRENT.value
         if float(self.send_command('MG_TA1')) != 0:
@@ -291,7 +293,6 @@ class DMC(object):
                         print("Connected to:" + self.g.GInfo())
                     
                     self.ip_address = r.ip
-                    #self.disable_motors();
                     self.send_command('RS') # Perform reset to power on condition
 
                     self.errors = {}
@@ -392,8 +393,7 @@ class DMC(object):
                         motor = AXES_MOTORS[r.axis].value
                         
                         self.update_limits()
-                        #self.configure_limits()
-                        
+
                         sign = 1
                         if not r.forward:
                             sign = -1
@@ -405,7 +405,6 @@ class DMC(object):
                             self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
                             
                         self.status = Status.JOGGING
-                        # Ignore the request for JOG mode in other cases, e.g. if moving
                     
                 if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
                     status = Status.MOVING_RELATIVE
@@ -425,6 +424,7 @@ class DMC(object):
                         self.movement_direction = dir
                         self.configure_limits()
                         self.send_command('BG')
+                        
                     self.status = status
                 
                 if r.type == Status.MOVING_ABSOLUTE and self.status == Status.STOP:
@@ -443,12 +443,12 @@ class DMC(object):
                         self.send_command('PA{}={}'.format(m.value, pos[mi]))
                         
                         dir.append(delta[mi] >= 0)
-                    
-                    
+
                     if status == Status.MOVING_ABSOLUTE:
                         self.movement_direction = dir
                         self.configure_limits()
                         self.send_command('BG')
+                        
                     self.status = status
                     
                 if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
@@ -509,73 +509,89 @@ class DMC(object):
             except queue.Empty as e:
                 pass
             except gclib.GclibError as e:
-                msg = util.format_exception(e)
+                msg = traceback.format_exc()
                 self.errors[ErrorType.GCLIB] = msg
                 util.dprint(msg)
+                self.status = Status.ERROR
+            except Exception as e:
+                msg = traceback.format_exc()
+                self.errors[ErrorType.OTHER] = msg
+                util.dprint(msg)
+                self.status = Status.ERROR
 
             # Need to add except for Gclib ? error
             
-            if self.status is not Status.DISCONNECTED:
+            if self.status is not Status.DISCONNECTED and self.status is not Status.ERROR:
                 try:
                     self.update_position()
                     self.update_stop_code()
                     self.update_limits()
                 except Exception as e:
-                    self.errors[ErrorType.OTHER] = str(e)
-                    util.dprint('Error: ' + str(e))
+                    msg = traceback.format_exc()
+                    self.errors[ErrorType.OTHER] = msg
+                    util.dprint(msg)
+                    self.status = Status.ERROR
             
             old_status = self.status
-            status = self.status
             
-            if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE or self.status == Status.MOVING_ABSOLUTE:
-                if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
-                    status = Status.STOP
-                    for mi,m in enumerate(AXES_MOTORS):
-                        if self.stop_code[mi] == StopCode.DECEL_STOP_FWD_LIM:
-                            self.current_limits[mi] = 1
-                        elif self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
-                            self.current_limits[mi] = -1
-                        elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
-                            self.current_limits[mi] = 0
-                        else:
-                            # Uh oh!
-                            self.errors[ErrorType.OTHER] = 'Unexpected stop code during motion'
-                
-                    
-            if self.status == Status.HOMING:
-                if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
-                    status = Status.STOP
-                    for mi,m in enumerate(AXES_MOTORS):
-                        if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
-                            self.current_limits[mi] = 1 if HOMING_DIRECTION[mi] else -1
-                        else:
-                            # Uh oh!
-                            self.errors[ErrorType.OTHER] = 'Unexpected stop code during homing'
-                    if len(self.errors) == 0:
-                        # Set this point as the origin
-                        time.sleep(0.25)
+            try:
+                if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE or self.status == Status.MOVING_ABSOLUTE:
+                    if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
+                        self.status = Status.STOP
                         for mi,m in enumerate(AXES_MOTORS):
-                            self.send_command('DP{}=0'.format(m.value))
-                        #self.send_command('SH') # Servo here to set point as (0,0,0)
-            
-            if not self.dummy and self.status != Status.DISCONNECTED:
-                self.update_errors()
-                
-            if len(self.errors) > 0:
-                try:
-                    self.disable_motors()
-                except gclib.GclibError:
-                    pass
-                if not self.dummy:
+                            if self.stop_code[mi] == StopCode.DECEL_STOP_FWD_LIM:
+                                self.current_limits[mi] = 1
+                            elif self.stop_code[mi] == StopCode.DECEL_STOP_REV_LIM:
+                                self.current_limits[mi] = -1
+                            elif self.stop_code[mi] == StopCode.DECEL_STOP_ST or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT:
+                                self.current_limits[mi] = 0
+                            else:
+                                raise Exception('Unexpected stop code during movement')
+                    
+                        
+                if self.status == Status.HOMING:
+                    if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
+                        self.status = Status.STOP
+                        for mi,m in enumerate(AXES_MOTORS):
+                            if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
+                                self.current_limits[mi] = 1 if HOMING_DIRECTION[mi] else -1
+                            else:
+                                 raise Exception('Unexpected stop code during homing')
+                        if len(self.errors) == 0:
+                            # Set this point as the origin
+                            time.sleep(0.25)
+                            for mi,m in enumerate(AXES_MOTORS):
+                                self.send_command('DP{}=0'.format(m.value))
+                                
+                if self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                    self.update_errors()
+                    if len(self.errors) > 0:
+                        self.status = Status.ERROR
+
+            except gclib.GclibError as e:
+                msg = traceback.format_exc()
+                self.errors[ErrorType.GCLIB] = msg
+                util.dprint(msg)
+            except Exception as e:
+                msg = traceback.format_exc()
+                self.errors[ErrorType.OTHER] = msg
+                util.dprint(msg)
+                self.status = Status.ERROR
+
+            if self.status is not old_status:
+                if self.status == Status.ERROR:
                     try:
-                        self.g.GClose()
+                        self.disable_motors()
                     except gclib.GclibError:
                         pass
-                status = Status.DISCONNECTED
-            
-            if status is not old_status:
-                self.status = status
+                    if not self.dummy:
+                        try:
+                            self.g.GClose()
+                        except gclib.GclibError:
+                            pass
+                    
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
+                
                     
     def configure_limits(self):
         # If at X axis limit, must disable both because they use the same sensor
@@ -629,6 +645,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(True)
+    d = DMC(False)
     d.connect(DEFAULT_IP)
     d.stop()
