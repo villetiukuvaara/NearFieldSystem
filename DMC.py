@@ -488,7 +488,8 @@ class DMC(object):
                         except gclib.GclibError:
                             pass
                     
-                    self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
+                    if not self.dummy:
+                        self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
                     
                     self.movement_direction = HOMING_DIRECTION
                     sign = [1 if forward else -1 for forward in self.movement_direction]
