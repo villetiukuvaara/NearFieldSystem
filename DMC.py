@@ -8,11 +8,12 @@ import threading
 import time
 import queue
 
+
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.231'
+DEFAULT_IP = '134.117.39.248'
 
 class Motor(Enum):
     X = 'A'
@@ -508,8 +509,9 @@ class DMC(object):
             except queue.Empty as e:
                 pass
             except gclib.GclibError as e:
-                self.errors[ErrorType.GCLIB] = 'gclib.GclibError:' + str(e)
-                util.dprint('gclib.GclibError:' + str(e))
+                msg = util.format_exception(e)
+                self.errors[ErrorType.GCLIB] = msg
+                util.dprint(msg)
 
             # Need to add except for Gclib ? error
             
@@ -621,9 +623,12 @@ class DMC(object):
         self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
                                False) # False makes it not blocking
         
+    def clear_errors(self):
+        self.errors = {}
+        
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(False)
+    d = DMC(True)
     d.connect(DEFAULT_IP)
     d.stop()

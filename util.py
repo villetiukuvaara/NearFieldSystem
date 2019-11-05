@@ -1,6 +1,8 @@
 # Utility functions
 
 import threading
+import linecache
+import sys
 
 debug_messages = False
 print_lock = threading.Lock()
@@ -30,3 +32,18 @@ def dprint(string):
                 
         finally:
             print_lock.release()
+            
+def format_exception(e):
+    exc_type, exc_obj, tb = sys.exc_info()
+    f = tb.tb_frame
+    lineno = tb.tb_lineno
+    filename = f.f_code.co_filename
+    linecache.checkcache(filename)
+    line = linecache.getline(filename, lineno, f.f_globals)
+    
+    module = e.__class__.__module__
+    if module is None or module == str.__class__.__module__:
+        return e.__class__.__name__
+    name =  module + '.' + e.__class__.__name__
+
+    return 'EXCEPTION IN ({}, LINE {} "{}"): {}: {}'.format(filename, lineno, line.strip(), name, exc_obj)
