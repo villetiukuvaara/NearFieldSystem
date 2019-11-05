@@ -40,12 +40,13 @@ class DMCRequest():
 class Status(Enum):
     DISCONNECTED = 0 # Initial state
     MOVING_RELATIVE = 1
-    JOGGING = 2
-    HOMING = 3
-    STOP = 4 # Motors are stopped but enabled (drawing current)
-    MOTORS_DISABLED = 5 # Motors are disabled (not drawing current)
-    REQUEST_FAIL = 6
-    ERROR = 7
+    MOVING_ABSOLUTE = 2
+    JOGGING = 3
+    HOMING = 4
+    STOP = 5 # Motors are stopped but enabled (drawing current)
+    MOTORS_DISABLED = 6 # Motors are disabled (not drawing current)
+    REQUEST_FAIL = 7
+    ERROR = 8
 
 class ErrorType(Enum):
     DMC_VOLTAGE_CURRENT = 'Undervoltage or over current error'
@@ -385,7 +386,6 @@ class DMC(object):
                 if r.type == Status.JOGGING and self.status == Status.STOP:
                     # Only move if not at limit
                     if (r.forward and self.current_limits[r.axis] <= 0) or (not r.forward and self.current_limits[r.axis] >= 0):
-                        util.dprint('jog')
                         self.movement_direction = [0,0,0]
                         self.movement_direction[r.axis] = r.forward
                         motor = AXES_MOTORS[r.axis].value
@@ -407,14 +407,48 @@ class DMC(object):
                         # Ignore the request for JOG mode in other cases, e.g. if moving
                     
                 if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
-                    # If moving forward, enable only the forward axis limit
-                    # or only the backwards limit if moving backwards
+                    status = Status.MOVING_RELATIVE
+                    dir = []
+                    
                     for mi,m in enumerate(AXES_MOTORS):
+                        # If limit is active, check we are moving in the opposite direction
+                        if (r.coord[mi] < 0 and self.current_limits[mi] < 0) or (r.coord[mi] > 0 and self.current_limits[mi] > 0):
+                            status = Status.STOP
+                            break
                         self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
                         self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
-                        self.configure_limits(m.value, r.coord[mi] > 0)
-                    self.send_command('BG')
-                    self.status = Status.MOVING_RELATIVE
+                        
+                        dir.append(r.coord[mi] >= 0)
+                    
+                    if status == Status.MOVING_RELATIVE:
+                        self.movement_direction = dir
+                        self.configure_limits()
+                        self.send_command('BG')
+                    self.status = status
+                
+                if r.type == Status.MOVING_ABSOLUTE and self.status == Status.STOP:
+                    status = Status.MOVING_ABSOLUTE
+                    
+                    pos = [math.floor(coord*cnt) for coord,cnt in zip(r.coord,CNT_PER_CM)]
+                    delta = [stop-start for stop,start in zip(pos, self.position_cnt)]
+                    dir = []
+                    
+                    for mi,m in enumerate(AXES_MOTORS):
+                        # If limit is active, check we are moving in the opposite direction
+                        if (delta[mi] < 0 and self.current_limits[mi] < 0) or (delta[mi] > 0 and self.current_limits[mi] > 0):
+                            status = Status.STOP
+                            break
+                        self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                        self.send_command('PA{}={}'.format(m.value, pos[mi]))
+                        
+                        dir.append(delta[mi] >= 0)
+                    
+                    
+                    if status == Status.MOVING_ABSOLUTE:
+                        self.movement_direction = dir
+                        self.configure_limits()
+                        self.send_command('BG')
+                    self.status = status
                     
                 if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
                     self.send_command('MO') # Disable motors
@@ -490,7 +524,7 @@ class DMC(object):
             old_status = self.status
             status = self.status
             
-            if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE:
+            if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE or self.status == Status.MOVING_ABSOLUTE:
                 if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
@@ -539,9 +573,6 @@ class DMC(object):
                 self.status = status
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
                     
-    # Configure limits on the given axis
-    # Forward is True to ENABLE forward motion and False to enable
-    # backward motion
     def configure_limits(self):
         # If at X axis limit, must disable both because they use the same sensor
         # and motion cannot start! It should be re-enabled as soon as the switch
@@ -582,10 +613,15 @@ class DMC(object):
     def move_relative(self, move):
         self.request_queue.put(DMCRequest(Status.MOVING_RELATIVE).move_params(move),
                                False) # False makes it not blocking
+    
+    # move is a vector indicating the final position in cm
+    def move_absolute(self, pos):
+        self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
+                               False) # False makes it not blocking
         
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(False)
+    d = DMC(True)
     d.connect(DEFAULT_IP)
     d.stop()
