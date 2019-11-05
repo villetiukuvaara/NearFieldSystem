@@ -302,14 +302,17 @@ class MotionTab(tk.Frame):
         status = self.dmc.status
         self.update_current_stats()
         
-        if len(self.dmc.errors) > 0:
-            msg = 'An error occured!\n\n' + '\n'.join([str(e) for e in self.dmc.errors])
-            msg += '\n\n' + '\n'.join([str(s) for s in self.dmc.stop_code])
-            tk.messagebox.showerror(title="Motor controller error", message=msg)
-            self.dmc.clear_errors()
-            self.force_update = True
-        
         if self.last_dmc_status != status or self.force_update:
+            if self.dmc.status == DMC.Status.ERROR:
+                msg = 'An error occured!\n\n' + '\n'.join([str(e) + ':' + str(i) for i,e in enumerate(self.dmc.errors)])
+                msg += '\n\n' + '\n'.join([str(s) for s in self.dmc.stop_code])
+                tk.messagebox.showerror(title="Motor controller error", message=msg)
+                self.dmc.clear_errors()
+                self.force_update = True
+                self.enable_connect(True)
+                self.enable_joystick(False)
+                self.calibration_label.config(text='Motor controller is disconnected', fg='red')
+            
             if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)
                 self.enable_joystick(False)

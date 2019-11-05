@@ -14,7 +14,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.160'
+DEFAULT_IP = '134.117.39.200'
 
 class Motor(Enum):
     X = 'A'
@@ -284,7 +284,7 @@ class DMC(object):
                 r = self.request_queue.get(True, 0.02)
                 old_status = self.status
                 
-                if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED:
+                if r.type == Status.MOTORS_DISABLED and (self.status == Status.DISCONNECTED or self.status == Status.ERROR):
                     if not self.dummy:
                         self.g = gclib.py();
                         print('gclib version:', self.g.GVersion())
@@ -466,19 +466,23 @@ class DMC(object):
                         self.configure_limits()
                         
                         self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
-                        self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1*CNT_PER_CM[0])))
+                        self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1.5*CNT_PER_CM[0])))
                         self.send_command('BG{}'.format(Motor.X.value))
                         self.g.GMotionComplete(Motor.X.value)
                         
                         # If still at limit, it was actually the forward limit!
                         if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:
                             self.current_limits[0] = 1
+                            print('a')
                         else:
                             self.current_limits[0] = 0
+                            print('b')
 
                     # Move each axis back a bit
+                    print('a' + str(HOMING_DIRECTION))
                     self.movement_direction = [not m for m in HOMING_DIRECTION]
                     sign = [1 if forward else -1 for forward in self.movement_direction]
+                    print('a: ' + str(sign))
                     self.configure_limits()
                     
                     for mi,m in enumerate(AXES_MOTORS):
@@ -492,8 +496,10 @@ class DMC(object):
                     if not self.dummy:
                         self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
                     
+                    print('b' + str(HOMING_DIRECTION))
                     self.movement_direction = HOMING_DIRECTION
                     sign = [1 if forward else -1 for forward in self.movement_direction]
+                    print('b: ' + str(sign))
                     self.configure_limits()
                       
                     for mi,m in enumerate(AXES_MOTORS):
