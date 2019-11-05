@@ -12,7 +12,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.248'
+DEFAULT_IP = '134.117.39.231'
 
 class Motor(Enum):
     X = 'A'
@@ -466,7 +466,7 @@ class DMC(object):
                         
                         self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
                         self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1*CNT_PER_CM[0])))
-                        self.send_command('BG{}'.format(m.value))
+                        self.send_command('BG{}'.format(Motor.X.value))
                         self.g.GMotionComplete(Motor.X.value)
                         
                         # If still at limit, it was actually the forward limit!
@@ -545,12 +545,13 @@ class DMC(object):
                     status = Status.STOP
                     for mi,m in enumerate(AXES_MOTORS):
                         if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
-                            self.current_limits[mi] = HOMING_DIRECTION[mi]
+                            self.current_limits[mi] = 1 if HOMING_DIRECTION[mi] else -1
                         else:
                             # Uh oh!
                             self.errors[ErrorType.OTHER] = 'Unexpected stop code during homing'
                     if len(self.errors) == 0:
                         # Set this point as the origin
+                        time.sleep(0.25)
                         for mi,m in enumerate(AXES_MOTORS):
                             self.send_command('DP{}=0'.format(m.value))
                         #self.send_command('SH') # Servo here to set point as (0,0,0)
@@ -623,6 +624,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(True)
+    d = DMC(False)
     d.connect(DEFAULT_IP)
     d.stop()
