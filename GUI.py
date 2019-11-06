@@ -17,8 +17,8 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.protocol("WM_DELETE_WINDOW", self.clean_up)
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
-        self.dmc = DMC(True)
-        self.vna = vna.VNA(True)
+        self.dmc = DMC(False)
+        self.vna = vna.VNA(False)
         self.make_widgets()
         self.gui_ready = True
 

@@ -20,6 +20,9 @@ POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
 
+class VNAError(Exception):
+    pass
+
 class CalType(Enum):
     S11 = 0
     S22 = 1
@@ -66,25 +69,24 @@ class CalStep(Enum):
     SHORT_P2 = 5
     LOAD_P2 = 6
     THRU = 7
-    COMPLETE_NO_ISOLATION = 8
-    ISOLATION = 9
-    INCOMPLETE_QUIT = 10
+    ISOLATION = 8
+    INCOMPLETE = 9
+    COMPLETE = 10
 
 class CalibrationStepDetails():
     def __init__(self, prompt, next_steps):
         self.prompt = prompt
         self.next_steps = next_steps
 
-CAL_STEPS = {CalStep.BEGIN: CalibrationStepDetails("", [CalStep.OPEN_P1, CalStep.INCOMPLETE_QUIT]),
-             CalStep.OPEN_P1: CalibrationStepDetails("Connect OPEN at port 1", [CalStep.SHORT_P1, CalStep.INCOMPLETE_QUIT]),
-             CalStep.SHORT_P1: CalibrationStepDetails("Connect SHORT at port 1", [CalStep.LOAD_P1, CalStep.INCOMPLETE_QUIT]),
-             CalStep.LOAD_P1: CalibrationStepDetails("Connect LOAD at port 1", [CalStep.OPEN_P2, CalStep.INCOMPLETE_QUIT]),
-             CalStep.OPEN_P2: CalibrationStepDetails("Connect OPEN at port 2", [CalStep.SHORT_P2, CalStep.INCOMPLETE_QUIT]),
-             CalStep.SHORT_P2: CalibrationStepDetails("Connect SHORT at port 2", [CalStep.LOAD_P2, CalStep.INCOMPLETE_QUIT]),
-             CalStep.LOAD_P2: CalibrationStepDetails("Connect LOAD at port 2", [CalStep.THRU, CalStep.INCOMPLETE_QUIT]),
-             CalStep.THRU: CalibrationStepDetails("Connect THRU", [CalStep.ISOLATION, CalStep.INCOMPLETE_QUIT]),
-             CalStep.ISOLATION: CalibrationStepDetails("Run isolation calibration?", [None, None]),
-             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None, None])}
+CAL_STEPS = {CalStep.BEGIN: "",
+             CalStep.OPEN_P1: "Connect OPEN at port 1",
+             CalStep.SHORT_P1: "Connect SHORT at port 1",
+             CalStep.LOAD_P1: "Connect LOAD at port 1",
+             CalStep.OPEN_P2: "Connect OPEN at port 2",
+             CalStep.SHORT_P2: "Connect SHORT at port 2",
+             CalStep.LOAD_P2: "Connect LOAD at port 2",
+             CalStep.THRU: "Connect THRU",
+             CalStep.ISOLATION: "Run isolation calibration?"}
    
 
 class VNA():
@@ -230,8 +232,8 @@ class VNA():
         #self.vna.write("CORRON;") #Turn on error correction
         self.vna.write("SING;") #Single sweep
 
-    
-    def calibrate(self, cal_step, option):
+    # Performs
+    def calibrate(self, cal_type, cal_step, option):
         time.sleep(0.5)
         self.cal_ok = False
         util.dprint('Done cal step {} with option={}'.format(cal_step, option))
@@ -243,37 +245,76 @@ class VNA():
                 self.cal_ok = True
             return
         
+        next_step = None
+        
+        if not option and cal_step != CalStep.ISOLATION:
+            return CalStep.INCOMPLETE
+        
         if cal_step == CalStep.BEGIN:
             self.vna.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
-            self.vna.write("CALIFUL2;")
-            self.vna.write("REFL;")
+            if cal_type == CalType.S11:
+                self.vna.write("CALIS111;")
+                next_step = CalStep.OPEN_P1
+            elif cal_type == CalType.S22:
+                self.vna.write("CALIS222;")
+                next_step = CalStep.OPEN_P2
+            elif cal_type == CalType.FULL:
+                self.vna.write("CALIFUL2;")
+                self.vna.write("REFL;")
+                next_step = CalStep.OPEN_P1
+            else:
+                raise VNAError("Invalid calibration type/step")
         elif cal_step == CalStep.OPEN_P1:
             self.vna.write("OPC?;CLASS11A;") #OPC? command requests the VNA to reply with a "1" when the following operation is complete
             self.vna.read()
             self.vna.write("DONE;")
+            next_step = CalStep.SHORT_P1
         elif cal_step == CalStep.SHORT_P1:
             self.vna.write("OPC?;CLASS11B;")
             self.vna.read()
             self.vna.write("DONE;")
+            next_step = CalStep.LOAD_P1
         elif cal_step == CalStep.LOAD_P1:
             self.vna.write("CLASS11C;")
             self.vna.write("OPC?;STANA;") #Choose the first standard (A)
             self.vna.read()
             self.vna.write("DONE;")
+            if cal_type == CalType.S11:
+                self.vna.write("OPC?;SAV1;") #Completes the calibration
+                self.vna.read()
+                next_step = CalStep.COMPLETE
+                self.cal_ok = True
+            elif cal_type == CalType.FULL:
+                next_step = CalStep.OPEN_P2
+            else:
+                raise VNAError("Invalid calibration type/step")
         elif cal_step == CalStep.OPEN_P2:
             self.vna.write("OPC?;CLASS22A;") #OPC? command requests the VNA to reply with a "1" when the following operation is complete
             self.vna.read()
             self.vna.write("DONE;")
+            next_step = CalStep.SHORT_P2
         elif cal_step == CalStep.SHORT_P2:
             self.vna.write("OPC?;CLASS22B;")
             self.vna.read()
             self.vna.write("DONE;")
+            next_step = CalStep.LOAD_P2
         elif cal_step == CalStep.LOAD_P2:
             self.vna.write("CLASS22C;")
             self.vna.write("OPC?;STANA;") #Choose the first standard (A)
             self.vna.read()
             self.vna.write("DONE;")
+            if cal_type == CalType.S22:
+                self.vna.write("OPC?;SAV1;") #Completes the calibration
+                self.vna.read()
+                next_step = CalStep.COMPLETE
+                self.cal_ok = True
+            elif cal_type == CalType.FULL:
+                next_step = CalStep.THRU
+            else:
+                raise VNAError("Invalid calibration type/step")
         elif cal_step == CalStep.THRU:
+            self.vna.write("REFD;") #End of reflection calibration
+            self.vna.write("TRAN;") #Starts transmission calibration
             self.vna.write("OPC?;FWDT;") #Forward transmission
             self.vna.read()
             self.vna.write("OPC?;FWDM;") #Forward load match
@@ -283,6 +324,7 @@ class VNA():
             self.vna.write("OPC?;REVM;") #Reverse lod match
             self.vna.read()
             self.vna.write("TRAD;") #End of transmission calibration
+            next_step = CalStep.ISOLATION
         elif cal_step == CalStep.ISOLATION:
             self.cal_params.isolation_cal = option
             if self.cal_params.isolation_cal:
@@ -294,14 +336,18 @@ class VNA():
                 self.vna.write("OPC?;FWDI;") #Forward isolation
                 self.vna.read()
                 self.vna.write("ISOD;AVEROOFF;") #Completes isolation calibration and turns off averaging
-                self.vna.write("OPC?;SAV2;") #Completes the calibration
-                self.vna.read()
             else:
                 self.vna.write("OMII;") #Omit isolation
-                self.vna.write("OPC?;SAV2;") #Complete the calibration
-                self.vna.read()
+                
+            self.vna.write("OPC?;SAV2;") #Complete the calibration
+            self.vna.read()
             
+            next_step = CalStep.COMPLETE
             self.cal_ok = True   
+        else:
+            raise VNAError('Invalid CalStep')
+            
+        return next_step
             
        
     def set_calibration_params(self, params):

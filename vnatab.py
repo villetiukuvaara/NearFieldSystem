@@ -125,28 +125,28 @@ class VNATab(tk.Frame):
             self.vna.disconnect()
         self.update_widgets()
             
-        
-    
-    def calibration_monitor(self):
+    def calibration_monitor(self, cal_type):
         if self.cal_step_done:
-            self.update_widgets()
             step = self.next_cal_step
             
-            if step is None:
+            if step is vna.CalStep.COMPLETE:
                 self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration complete")
                 return
-            if step is vna.CalStep.INCOMPLETE_QUIT:
+            if step is vna.CalStep.INCOMPLETE:
                 self.update_widgets()
-                tk.messagebox.showerror("Calibration Wizard", vna.CAL_STEPS[step].prompt)
+                tk.messagebox.showinfo("Calibration Wizard", "Calibration imcomplete!")
                 return
             
-            ans = tk.messagebox.askokcancel("Calibration Wizard", vna.CAL_STEPS[step].prompt)
-            self.next_cal_step = vna.CAL_STEPS[step].next_steps[ans==False]
+            ans = tk.messagebox.askokcancel("Calibration Wizard", vna.CAL_STEPS[step])
             self.cal_step_done = False
-            threading.Thread(target=lambda: self.calibration_task(step, ans)).start()
+            threading.Thread(target=lambda ans=ans: self.calibration_task(cal_type, step, ans)).start()
         
-        self.after(SLEEP, self.calibration_monitor)
+        self.after(SLEEP, lambda: self.calibration_monitor(cal_type))
+        
+    def calibration_task(self, cal_type, step, option):
+        self.next_cal_step = self.vna.calibrate(cal_type, step, option)
+        self.cal_step_done = True
         
     def update_widgets(self):
         if not self.vna.connected:
@@ -177,10 +177,6 @@ class VNATab(tk.Frame):
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
             self.gpib_entry.config(state=tk.DISABLED)
-        
-    def calibration_task(self, step, option):
-        self.vna.calibrate(step, option)
-        self.cal_step_done = True
 
 
 class CalDialog():
@@ -244,10 +240,9 @@ class CalDialog():
                 self.top.destroy()
                 step = vna.CalStep.BEGIN
                 self.parent.vna.set_calibration_params(params)
-                self.parent.next_cal_step = vna.CAL_STEPS[step].next_steps[0]
                 self.parent.cal_step_done = False
-                threading.Thread(target=lambda: self.parent.calibration_task(step, None)).start()
-                self.parent.calibration_monitor()
+                threading.Thread(target=lambda: self.parent.calibration_task(vna.CalType.S11, step, True)).start()
+                self.parent.calibration_monitor(vna.CalType.S11)
                 return
             else:
                 m = 'Please correct the parameters.\n\n{}'.format('\n'.join(v))
