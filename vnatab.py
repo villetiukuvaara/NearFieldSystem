@@ -17,6 +17,7 @@ POWER_DECIMALS = 1
 DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f}".format(
                 start=vna.FREQ_MIN, stop=vna.FREQ_MAX, points=vna.POINTS_MAX, power=vna.POWER_MAX,
                 s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
+DEFAULT_ADDRESS = 16
 
 class VNATab(tk.Frame):
     
@@ -26,6 +27,7 @@ class VNATab(tk.Frame):
         self.vna = vna_obj
         self.pack()
         self.make_widgets()                      # attach widgets to self
+        self.connect_button.focus()
         self.cal_step_done = False
         self.next_cal_step = None
         
@@ -33,6 +35,18 @@ class VNATab(tk.Frame):
         # Label frame for starting calibration
         calibrate_group = tk.LabelFrame(self, text="Calibration")
         calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
+        gpib_group = tk.Frame(calibrate_group)
+        gpib_group.pack(side=tk.TOP)
+        
+        tk.Label(gpib_group, text="GPIB address: GPIB0::").pack(side=tk.LEFT)
+        self.gpib_string = tk.StringVar()
+        
+        self.gpib_entry = tk.Entry(gpib_group, textvariable=self.gpib_string, validate="key",
+                                   validatecommand=(self.register(self.validate_entry), "%P", False), width=3)
+        self.gpib_entry.pack(side=tk.LEFT)
+        self.gpib_string.set("{}".format(DEFAULT_ADDRESS))
+        tk.Label(gpib_group, text="::INSTR").pack(side=tk.LEFT)
+        
         cal_btn_group = tk.Frame(calibrate_group)
         cal_btn_group.pack(side=tk.TOP)
         self.connect_button = tk.Button(cal_btn_group, text="Connect",command=lambda: self.connect_btn_callback(True),width=15)
@@ -99,7 +113,13 @@ class VNATab(tk.Frame):
        
     def connect_btn_callback(self, connect):
         if connect:
-            if not self.vna.connect():
+            try:
+                address = int(self.gpib_string.get())
+            except ValueError:
+                tk.messagebox.showerror(title="VNA Error",message="Invalid GPIB Address")
+                return
+            
+            if not self.vna.connect(address):
                 tk.messagebox.showerror(title="VNA Error",message="Could not connect to VNA")
         else:
             self.vna.disconnect()
@@ -136,6 +156,7 @@ class VNATab(tk.Frame):
             self.connect_button.config(state=tk.NORMAL)
             self.disconnect_button.config(state=tk.DISABLED)
             self.calibration_button.config(state=tk.DISABLED)
+            self.gpib_entry.config(state=tk.NORMAL)
         elif not self.vna.cal_ok:
             self.calibration_label.config(text="Calibration required", fg="red")
             self.save_button.config(state=tk.DISABLED)
@@ -143,6 +164,7 @@ class VNATab(tk.Frame):
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
+            self.gpib_entry.config(state=tk.DISABLED)
         else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
             text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Isolation calibration: {iso}".format(
@@ -154,6 +176,7 @@ class VNATab(tk.Frame):
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
+            self.gpib_entry.config(state=tk.DISABLED)
         
     def calibration_task(self, step, option):
         self.vna.calibrate(step, option)

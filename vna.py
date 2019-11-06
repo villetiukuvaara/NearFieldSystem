@@ -105,14 +105,14 @@ class VNA():
     
     # Establish a connection with the VNA
     # Returns true after successful connection
-    def connect(self):
+    def connect(self, address):
         if self.dummy:
             self.connected = True
             return True
         
         try:
             self.rm=visa.ResourceManager()
-            self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
+            self.vna=self.rm.open_resource('GPIB0::{}::INSTR'.format(address),resource_pyclass=MessageBasedResource)
             self.vna.timeout=None #Avoid timing out for time consuming measurements.
         except visa.VisaIOError:
             self.connected = False
