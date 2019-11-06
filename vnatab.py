@@ -193,14 +193,24 @@ class CalDialog():
     def make_widgets_config(self):
         self.config_frame = tk.Frame(self.top)
         self.config_frame.pack()
-        tk.Label(self.config_frame,text="Enter calibration parameters").pack(side=tk.TOP)
-        config_meas_group = tk.Frame(self.config_frame);
-        config_meas_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.TOP)
+        #tk.Label(self.config_frame,text="Enter calibration parameters").pack(side=tk.TOP)
+        
+        type_group = tk.LabelFrame(self.config_frame)
+        type_group.pack(side=tk.TOP,fill=tk.X,padx=PADDING,pady=PADDING)
+        types = ["1-port (S11)", "1-port (S22)", "Full 2-port"]
+        self.cal_type = tk.IntVar()
+        for i,typ in enumerate(vna.CalType):
+            tk.Radiobutton(type_group, text=types[i],value=typ.value,
+                           variable=self.cal_type).pack(anchor=tk.W)
+        self.cal_type.set(vna.CalType.FULL.value)
+        
+        config_meas_group = tk.LabelFrame(self.config_frame);
+        config_meas_group.pack(side=tk.TOP,fill=tk.X,padx=PADDING,pady=PADDING)
 
         # Labels for start, stop, step rows
         tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
-        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Power (dB)").grid(row=5,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = {}

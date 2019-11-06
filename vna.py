@@ -10,13 +10,20 @@ import myNumbers
 from enum import Enum
 import time
 import util
+from enum import Enum
 
 FREQ_MIN = 20 # in GHZ
 FREQ_MAX = 60
-POINTS_MIN = 1 # Number of steps
-POINTS_MAX = 1601
+POINTS_MIN = 3 # Number of steps
+POINTS_MAX = 1601 # Number of steps
+POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
+
+class CalType(Enum):
+    S11 = 0
+    S22 = 1
+    FULL = 2
 
 class FreqSweepParams():
     def __init__(self, start, stop, points, power, isolation_cal=False):
@@ -132,6 +139,7 @@ class VNA():
             except visa.VisaIOError:
                 pass
             self.vna = None
+            self.rm = None
         self.connected = False
     
     def set_start_freq(self,startF="",units=""):
@@ -489,3 +497,6 @@ class VNA():
         for i in range(0,len(aux),2): #Only get the first value of every data pair because the other is zero
             res.append(aux[i])
         return tuple(res)
+
+if __name__ == "__main__":
+    v = VNA(False)
