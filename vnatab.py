@@ -10,11 +10,13 @@ from DMC import *
 import vna
 import threading
 
-VALIDATION_REGEX = [""]
 SLEEP = 100
-FREQ_DECIMALS = 4
-POWER_DECIMALS = 2
 PADDING = 5
+FREQ_DECIMALS = 2
+POWER_DECIMALS = 1
+DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f}".format(
+                start=vna.FREQ_MIN, stop=vna.FREQ_MAX, points=vna.POINTS_MAX, power=vna.POWER_MAX,
+                s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
 
 class VNATab(tk.Frame):
     
@@ -67,19 +69,13 @@ class VNATab(tk.Frame):
             self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
                 width=7, validatecommand=(self.register(self.validate_entry), "%P", i)))
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+            self.entry_strings[i].set(DEFAULT_PARAMS[i])
             
         self.update_widgets()
         
     def validate_entry(self, P, i):
-        i = int(i)
-        if i < 2: # For start and stop entries
-            m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
-            try:
-                if m is None or len(m.group(0)) > 8 or len(m.group(2)) > 3:
-                    return False
-            except ValueError:
-                return False
-        elif i == 2: # For number of points entry
+        i = int(i) 
+        if i == 2: # For number of points entry
             m = re.match("^[0-9]*$", P)
             try:
                 if m is None or float(m.group(0)) > 9999:
@@ -87,17 +83,13 @@ class VNATab(tk.Frame):
             except ValueError:
                 if len(m.group(0)) is not 0:
                     return False
-        else: # For power entry
-            m = re.match("^-?[0-9]*$", P)
+        else: # For frequency and power entries
+            m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
             try:
-                if m is None:
-                    return False
-                v = float(m.group(0))
-                if v > 20 or v < -40: # TODO: put correct power limits
+                if m is None or len(m.group(0)) > 3 or len(m.group(2)) > 3:
                     return False
             except ValueError:
-                if len(m.group(0)) is not 0 and m.group(0) is not '-':
-                    return False
+                return False
 
         return True
 
@@ -122,11 +114,11 @@ class VNATab(tk.Frame):
             step = self.next_cal_step
             
             if step is None:
-                self.update_cal_info()
+                self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration complete")
                 return
             if step is vna.CalStep.INCOMPLETE_QUIT:
-                self.update_cal_info()
+                self.update_widgets()
                 tk.messagebox.showerror("Calibration Wizard", vna.CAL_STEPS[step].prompt)
                 return
             
@@ -199,6 +191,7 @@ class CalDialog():
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key", width=7,
                 validatecommand=(self.top.register(self.parent.validate_entry), "%P", i)).grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+            self.entry_strings[name].set(DEFAULT_PARAMS[i])
             
         btn_group =  tk.Frame(self.config_frame)
         btn_group.pack(side=tk.BOTTOM,fill=tk.NONE)
