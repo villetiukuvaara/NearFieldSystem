@@ -61,21 +61,28 @@ class VNATab(tk.Frame):
         self.entry_strings = []
         self.entries = []
         self.step_labels = []
+        validation_decimals = [True, True, False]
         
         for i,pos in enumerate(['start','stop','points']):
             self.entry_strings.append(tk.StringVar())
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
-                width=7, validatecommand=(self.register(self.validate_entry), "%P", i)))
+                width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
             self.entry_strings[i].set(DEFAULT_PARAMS[i])
             
         self.update_widgets()
         
-    def validate_entry(self, P, i):
-        i = int(i) 
-        if i == 2: # For number of points entry
+    def validate_entry(self, P, decimals):
+        if decimals == "True":
+            m = re.match("^(-?[0-9]*)(\.?[0-9]*)?$", P)
+            try:
+                if m is None or len(m.group(1)) > 2 or len(m.group(2)) > FREQ_DECIMALS + 1:
+                    return False
+            except ValueError:
+                return False
+        else:
             m = re.match("^[0-9]*$", P)
             try:
                 if m is None or float(m.group(0)) > 9999:
@@ -83,14 +90,6 @@ class VNATab(tk.Frame):
             except ValueError:
                 if len(m.group(0)) is not 0:
                     return False
-        else: # For frequency and power entries
-            m = re.match("^(-?[0-9]*)\.?([0-9]*)$", P)
-            try:
-                if m is None or len(m.group(0)) > 3 or len(m.group(2)) > 3:
-                    return False
-            except ValueError:
-                return False
-
         return True
 
     def calibrate_btn_callback(self):
@@ -183,6 +182,7 @@ class CalDialog():
         
         self.entry_strings = {}
         self.entries = ['start','stop','points','power']
+        val_decimals = [True, True, False, True]
         self.step_labels = []
         
         for i,name in enumerate(self.entries):
@@ -190,7 +190,7 @@ class CalDialog():
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key", width=7,
-                validatecommand=(self.top.register(self.parent.validate_entry), "%P", i)).grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+                validatecommand=(self.top.register(self.parent.validate_entry), "%P", val_decimals[i])).grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
             self.entry_strings[name].set(DEFAULT_PARAMS[i])
             
         btn_group =  tk.Frame(self.config_frame)
