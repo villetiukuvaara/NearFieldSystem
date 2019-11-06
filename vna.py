@@ -1,9 +1,6 @@
 '''
 Interfacing class and methods to communicate with an Agilent 8720ES VNA.
-Carleton University
-Summer of 2019
-Author: Carlos Daniel Flores Pinedo
-Contact: carlosdanielfp@outlook.com
+Adapted from code written by Carlos Daniel Flores Pinedo (carlosdanielfp@outlook.com)
 
 All these command sequences where based on the programer's manual for the 8720ES S-Parameter Network Analizer Programmer's Manual
 '''
@@ -80,7 +77,7 @@ CAL_STEPS = {CalStep.BEGIN: CalibrationStepDetails("", [CalStep.OPEN_P1, CalStep
              CalStep.LOAD_P2: CalibrationStepDetails("Connect LOAD at port 2", [CalStep.THRU, CalStep.INCOMPLETE_QUIT]),
              CalStep.THRU: CalibrationStepDetails("Connect THRU", [CalStep.ISOLATION, CalStep.INCOMPLETE_QUIT]),
              CalStep.ISOLATION: CalibrationStepDetails("Run isolation calibration?", [None, None]),
-             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None])}
+             CalStep.INCOMPLETE_QUIT: CalibrationStepDetails("Calibration is incomplete.", [None, None])}
    
 
 class VNA():
@@ -88,17 +85,33 @@ class VNA():
     Interface with a GPIB instrument using the Visa library.
     Use it to do full 2 port calibrations, set measurement parameters and get measurement data.
     '''
-    def __init__(self):
+    def __init__(self, dummy=False):
         '''Creates a Visa resource manager object to manage the instruments connected to the computer.
         Then initializes communication with a message based instrument like the vna used.
         It uses the name provided by the resource manager.'''
-        #self.rm=visa.ResourceManager()
-        #self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
-        #self.vna.timeout=None #Avoid timing out for time consuming measurements.
+        self.dummy =  dummy
         self.cal_ok = False
         self.cal_params = FreqSweepParams(0,0,0,0)
-
-    def setStartF(self,startF="",units=""):
+        
+        self.rm=None
+        self.vna=None
+    
+    def __del__(self):
+        try:
+            self.disconnect()
+        except:
+            pass
+    
+    def connect(self):
+        self.rm=visa.ResourceManager()
+        self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
+        self.vna.timeout=None #Avoid timing out for time consuming measurements.
+    
+    def disconnect(self):
+        self.vna.close()
+        self.vna = None
+    
+    def set_start_freq(self,startF="",units=""):
         '''Sets the start frequency parameter on the VNA.
         Returns the actual number of hertz to which the parameter in the VNA changed.
         Parameters:
@@ -107,7 +120,8 @@ class VNA():
         self.vna.write("STAR "+startF+" "+units+";") #Write sends the command string to the VNA
         self.vna.write("STAR?;") #Some commands accept the '?' to request for the state of a parameter. The answer then has to be read
         return self.vna.read() #Reading the buffer with the answer to the last information requested
-    def setStopF(self,stopF="",units=""):
+    
+    def set_stop_freq(self,stopF="",units=""):
         '''Sets the stop frequency parameter on the VNA.
         Returns the actual number of hertz to which the parameter in the VNA changed.
         Parameters:
@@ -116,7 +130,8 @@ class VNA():
         self.vna.write("STOP "+stopF+" "+units+";")
         self.vna.write("STOP?;")
         return self.vna.read()
-    def setPoints(self,points=""):
+    
+    def set_points(self,points=""):
         '''Sets the number of points parameter on the VNA.
         Returns the actual number of points to which the parameter in the VNA changed.
         Parameters:
@@ -124,7 +139,8 @@ class VNA():
         self.vna.write("POIN "+points+";")
         self.vna.write("POIN?;")
         return self.vna.read()
-    def setPower(self,power=""):
+    
+    def set_power(self,power=""):
         '''Sets the power parameter on the VNA.
         Returns the actual power level in dBm to which the parameter in the VNA changed.
         Parameters:
@@ -132,7 +148,8 @@ class VNA():
         self.vna.write("POWE "+power+";")
         self.vna.write("POWE?;")
         return self.vna.read()
-    def disp4Ch(self):
+    
+    def display_4_channels(self):
         '''Displays the 4 channels in a 2x2 grid with one slot for each.
         Assigns S11 to CHAN1, S12 to CHAN3, S21 to CHAN2, and S22 to CHAN4.'''
         self.vna.write("DUACON;")
@@ -149,8 +166,8 @@ class VNA():
         self.vna.write("SPLID4;")
         self.vna.write("OPC?;WAIT;")
 
-    def getCaliList(self):
-        '''Returns the calibration type and the calibration valuescurrently loaded on the VNA.
+    def get_calibration_list(self):
+        '''Returns the calibration type and the calibration values currently loaded on the VNA.
         First it verifies the calibration that is loaded on the VNA.
         Then it creates a list with the value arrays in teh clalibration.
         Returns these two values separately.'''
@@ -167,7 +184,7 @@ class VNA():
             valsCalLst.append(self.vna.query("OUTPCALC"+"{:02d}".format(i+1)+";")) #Formmating to ask for the correct data array
         return caliT,valsCalLst
     
-    def setCaliData(self,caliT,valsCalStr):
+    def set_calibration_data(self,caliT,valsCalStr):
         '''Loads calibration data to a VNA.
         Parameters:
         caliT: String specifying the calibration type.
@@ -187,34 +204,82 @@ class VNA():
         time.sleep(0.5)
         self.cal_ok = False
         util.dprint('Done cal step {} with option={}'.format(cal_step, option))
-        if cal_step == CalStep.ISOLATION:
+        
+        self.cal_ok = False
+        
+        if self.dummy:
+            if cal_step == CalStep.ISOLATION:
+                self.cal_ok = True
+            return
+        
+        if cal_step == CalStep.BEGIN:
+            self.vna.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
+            self.vna.write("CALIFUL2;")
+            self.vna.write("REFL;")
+        elif cal_step == CalStep.OPEN_P1:
+            self.vna.write("OPC?;CLASS11A;") #OPC? command requests the VNA to reply with a "1" when the following operation is complete
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.SHORT_P1:
+            self.vna.write("OPC?;CLASS11B;")
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.LOAD_P1:
+            self.vna.write("CLASS11C;")
+            self.vna.write("OPC?;STANA;") #Choose the first standard (A)
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.OPEN_P2:
+            self.vna.write("OPC?;CLASS22A;") #OPC? command requests the VNA to reply with a "1" when the following operation is complete
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.SHORT_P2:
+            self.vna.write("OPC?;CLASS22B;")
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.LOAD_P2:
+            self.vna.write("CLASS22C;")
+            self.vna.write("OPC?;STANA;") #Choose the first standard (A)
+            self.vna.read()
+            self.vna.write("DONE;")
+        elif cal_step == CalStep.THRU:
+            self.vna.write("OPC?;FWDT;") #Forward transmission
+            self.vna.read()
+            self.vna.write("OPC?;FWDM;") #Forward load match
+            self.vna.read()
+            self.vna.write("OPC?;REVT;") #Reverse transmission
+            self.vna.read()
+            self.vna.write("OPC?;REVM;") #Reverse lod match
+            self.vna.read()
+            self.vna.write("TRAD;") #End of transmission calibration
+        elif cal_step == CalStep.ISOLATION:
             self.cal_params.isolation_cal = option
-            self.cal_ok = True
+            if self.cal_params.isolation_cal:
+                self.vna.write("ISOL;") #Starts isolation calibration
+                self.vna.write("AVERFACT10;") #Sets average factor of 10
+                self.vna.write("AVEROON;") #Turns on averaging
+                self.vna.write("OPC?;REVI;") #Reverse isolation
+                self.vna.read()
+                self.vna.write("OPC?;FWDI;") #Forward isolation
+                self.vna.read()
+                self.vna.write("ISOD;AVEROOFF;") #Completes isolation calibration and turns off averaging
+                self.vna.write("OPC?;SAV2;") #Completes the calibration
+                self.vna.read()
+            else:
+                self.vna.write("OMII;") #Omit isolation
+                self.vna.write("OPC?;SAV2;") #Complete the calibration
+                self.vna.read()
+            
+            self.cal_ok = True   
+            
        
     def set_calibration_params(self, params):
         self.cal_params = params
     
     def get_calibration_params(self):
         return self.cal_params
-        
 
-    def calibrate_old(self,stepNum,answ=None,calStr="CALIFUL2"):
-        '''Runs the correct calibration method for the calibration type specified.
-        Sends the requiered parameters too.
-        Returns the instruccions and input choices sent by the calibration process.
-        Parameters:
-        stepNum: Integer of step number.
-        answ: String with the user's input'''
-        calt={"CALIRESP":self.caliresp,"CALIRAI":self.calirai,"CALIS111":self.calis111,"CALIS221":self.calis221,"CALIFUL2":self.califul2}
-        return calt[calStr](stepNum,answ)
-    def caliresp(self,stepNum,answ=None):
-        return "Done"
-    def calirai(self,stepNum,answ=None):
-        return "Done"
-    def calis111(self,stepNum,answ=None):
-        return "Done"
-    def calis221(self,stepNum,answ=None):
-        return "Done"
+
     def califul2(self,stepNum=0,answ=None):
         '''Full 2 port calibration procedure.
 
@@ -328,7 +393,7 @@ class VNA():
             '''There are no more steps.'''
             return "What did you do to the code?",("Don't know","Not sure")
 
-    def vnaSetUp(self,startF,stopF,points,power):
+    def configure(self,startF,stopF,points,power):
         '''
         Receives the parameter values to set and the returns the actual values in the VNA
         '''
@@ -351,7 +416,7 @@ class VNA():
             self.vna.write(i+";AUTO;")
         self.vna.query_ascii_values("OPC?;SING;")
 
-    def getDataTuple(self,chan="CHAN1"):
+    def get_data_tuple(self,chan="CHAN1"):
         '''
         Gets the data from the specified channel and returns it as a tuple.
         Parameters:
@@ -360,7 +425,8 @@ class VNA():
         self.vna.write("FORM5;")
         self.vna.write(chan+";")
         return self.vna.query_binary_values("OUTPDATA",container=tuple,header_fmt="hp")
-    def getStimPointsTuple(self):
+    
+    def get_stim_points_tuple(self):
         '''
         Returns a tuple with the values of frequency from the x-axis to graph.
         '''
@@ -372,7 +438,8 @@ class VNA():
                 break
             aux.append(float(i.split(',')[0])) #Split each string and get only the first value as a float number
         return tuple(aux)
-    def getDBTuple(self,chan="CHAN1"):
+    
+    def get_db_tuple(self,chan="CHAN1"):
         '''
         Returns a tuple with the logarithmic magnitude values on the channel specified
         Parameters:
@@ -385,7 +452,8 @@ class VNA():
         for i in range(0,len(aux),2): #Only get the first value of every data pair because the other is zero
             res.append(aux[i])
         return tuple(res)
-    def getPhaseTuple(self,chan="CHAN1"):
+    
+    def get_phase_tuple(self,chan="CHAN1"):
         '''
         Returns a tuple with the phase shift values on the channel specified
         Parameters:
