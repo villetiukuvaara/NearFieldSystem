@@ -7,6 +7,7 @@ from enum import Enum
 import util
 import re
 import DMC
+import threading
 
 class MotionTab(tk.Frame):
     
@@ -34,9 +35,13 @@ class MotionTab(tk.Frame):
         self.enable_connect(True)
         self.force_update = False
         self.gui_ready = True
+        self.die = False
         
         self.force_update = True
         self.after(50, self.background_task)
+        
+    def clean_up(self):
+        pass # Nothing needs to be done
         
     def make_widgets(self):
         position_group = tk.LabelFrame(self, text="Jog Axes")
@@ -327,7 +332,6 @@ class MotionTab(tk.Frame):
                 self.calibration_label.config(text='Ready for measurement', fg='black')
             self.force_update = False
             self.last_dmc_status = status
-                
+        
         self.after(50, self.background_task)
-        
-        
+            

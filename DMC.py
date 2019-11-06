@@ -120,10 +120,14 @@ class DMC(object):
 
     def clean_up(self):
         try:
-            self.disable_motors()
-            self.status = Status.DISCONNECTED
-            while(self.task is not None and self.task.is_alive()):
-                pass
+            self.disconnect()
+            while not self.status == Status.DISCONNECTED:
+                time.sleep(0.2)
+            
+            task = self.task
+            self.task = None
+            while(task.is_alive()):
+                time.sleep(0.2)
         except:
             pass
         
@@ -651,6 +655,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(False)
+    d = DMC(True)
     d.connect(DEFAULT_IP)
     d.stop()
