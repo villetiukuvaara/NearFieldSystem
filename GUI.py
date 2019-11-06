@@ -7,6 +7,7 @@ from DMC import *
 from motiontab import MotionTab
 from vnatab import VNATab
 import time
+import vna
 
 class NearFieldGUI:                            # not a widget subbclass
     def __init__(self, parent=None):
@@ -17,13 +18,14 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
         self.dmc = DMC(True)
+        self.vna = vna.VNA(True)
         self.make_widgets()
         self.gui_ready = True
 
     def make_widgets(self):
         self.tabs = ttk.Notebook(self.win)
         self.motion_tab = MotionTab(self.tabs, self.dmc)
-        self.vna_tab = VNATab(self.tabs)
+        self.vna_tab = VNATab(self.tabs, self.vna)
         self.measure_tab = ttk.Frame(self.tabs)
         self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")

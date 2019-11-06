@@ -91,6 +91,7 @@ class VNA():
         It uses the name provided by the resource manager.'''
         self.dummy =  dummy
         self.cal_ok = False
+        self.connected = False
         self.cal_params = FreqSweepParams(0,0,0,0)
         
         self.rm=None
@@ -102,14 +103,36 @@ class VNA():
         except:
             pass
     
+    # Establish a connection with the VNA
+    # Returns true after successful connection
     def connect(self):
-        self.rm=visa.ResourceManager()
-        self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
-        self.vna.timeout=None #Avoid timing out for time consuming measurements.
+        if self.dummy:
+            self.connected = True
+            return True
+        
+        try:
+            self.rm=visa.ResourceManager()
+            self.vna=self.rm.open_resource('GPIB0::16::INSTR',resource_pyclass=MessageBasedResource)
+            self.vna.timeout=None #Avoid timing out for time consuming measurements.
+        except visa.VisaIOError:
+            self.connected = False
+            return False
+        
+        self.connected = True
+        return True
     
     def disconnect(self):
-        self.vna.close()
-        self.vna = None
+        if self.dummy:
+            self.connected = False
+            return 
+        
+        if self.connected:
+            try:
+                self.vna.close()
+            except visa.VisaIOError:
+                pass
+            self.vna = None
+        self.connected = False
     
     def set_start_freq(self,startF="",units=""):
         '''Sets the start frequency parameter on the VNA.

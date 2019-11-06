@@ -14,13 +14,14 @@ VALIDATION_REGEX = [""]
 SLEEP = 100
 FREQ_DECIMALS = 4
 POWER_DECIMALS = 2
+PADDING = 5
 
 class VNATab(tk.Frame):
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, vna_obj=None):
         self.gui_ready = False
         tk.Frame.__init__(self, parent)             # do superclass init
-        self.vna = vna.VNA(True)
+        self.vna = vna_obj
         self.pack()
         self.make_widgets()                      # attach widgets to self
         self.cal_step_done = False
@@ -29,32 +30,31 @@ class VNATab(tk.Frame):
     def make_widgets(self):
         # Label frame for starting calibration
         calibrate_group = tk.LabelFrame(self, text="Calibration")
-        calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,expand=1)
+        calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         cal_btn_group = tk.Frame(calibrate_group)
         cal_btn_group.pack(side=tk.TOP)
-        self.connect_button = tk.Button(cal_btn_group, text="Connect",command=lambda: self.connect_btn_callback(True))
-        self.connect_button.grid(row=1,column=1,padx=5,pady=5)
-        self.disconnect_button = tk.Button(cal_btn_group, text="Disconnect",command=lambda: self.connect_btn_callback(False))
-        self.disconnect_button.grid(row=1,column=2,padx=5,pady=5)
-        self.calibration_button = tk.Button(cal_btn_group, text="Calibration wizard",command=self.calibrate_btn_callback)
-        self.calibration_button.grid(row=2,column=1,columnspan=2,padx=5,pady=5)
-        self.load_button = tk.Button(cal_btn_group, text="Load calibration")
-        self.load_button.grid(row=3,column=1,padx=5,pady=5)
-        self.save_button = tk.Button(cal_btn_group, text="Save calibration")
-        self.save_button.grid(row=3,column=2,padx=5,pady=5)
+        self.connect_button = tk.Button(cal_btn_group, text="Connect",command=lambda: self.connect_btn_callback(True),width=15)
+        self.connect_button.grid(row=1,column=1,padx=PADDING,pady=PADDING)
+        self.disconnect_button = tk.Button(cal_btn_group, text="Disconnect",command=lambda: self.connect_btn_callback(False),width=15)
+        self.disconnect_button.grid(row=1,column=2,padx=PADDING,pady=PADDING)
+        self.calibration_button = tk.Button(cal_btn_group, text="Calibration wizard",command=self.calibrate_btn_callback,width=30)
+        self.calibration_button.grid(row=2,column=1,columnspan=2,padx=PADDING,pady=PADDING)
+        self.load_button = tk.Button(cal_btn_group, text="Load calibration",width=15)
+        self.load_button.grid(row=3,column=1,padx=PADDING,pady=PADDING)
+        self.save_button = tk.Button(cal_btn_group, text="Save calibration",width=15)
+        self.save_button.grid(row=3,column=2,padx=PADDING,pady=PADDING)
         
         self.calibration_label = tk.Label(calibrate_group)
         self.calibration_label.pack()
-        self.update_cal_info()
-        
+
         # Label frame for configuring measurement
         config_meas_group = tk.LabelFrame(self, text="Configure Measurement");
-        config_meas_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.RIGHT)
+        config_meas_group.pack(side=tk.LEFT,fill=tk.BOTH,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
 
         # Labels for start, stop, step rows
-        tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1)
-        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1)
-        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1)
+        tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = []
         self.entries = []
@@ -65,17 +65,10 @@ class VNATab(tk.Frame):
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
-                validatecommand=(self.register(self.validate_entry), "%P", i)))
-            self.entries[i].grid(row=i+2,column=2)
-#        
-#    def change_region_type(self):
-#        for key,val in MotionTab.REGION_TYPE.items():
-#            if self.region_type.get() == key:
-#                self.steps_label.config(text=val)
-#                
-#        if self.region_type.get() == 'step':
-#             for ax_n, ax in enumerate(AXES):
-#                 self.entry_strings[(ax, 'step')].set('1')
+                width=7, validatecommand=(self.register(self.validate_entry), "%P", i)))
+            self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+            
+        self.update_widgets()
         
     def validate_entry(self, P, i):
         i = int(i)
@@ -114,14 +107,18 @@ class VNATab(tk.Frame):
         self.cal_dialog.make_widgets_config()
        
     def connect_btn_callback(self, connect):
-        return
-
-    def connection_task(self):
-        return
+        if connect:
+            if not self.vna.connect():
+                tk.messagebox.showerror(title="VNA Error",message="Could not connect to VNA")
+        else:
+            self.vna.disconnect()
+        self.update_widgets()
+            
+        
     
     def calibration_monitor(self):
         if self.cal_step_done:
-            self.update_cal_info()
+            self.update_widgets()
             step = self.next_cal_step
             
             if step is None:
@@ -140,17 +137,32 @@ class VNATab(tk.Frame):
         
         self.after(SLEEP, self.calibration_monitor)
         
-    def update_cal_info(self):
-        if not self.vna.cal_ok:
-            self.calibration_label.config(text="Calibration\nrequired", fg="red")
+    def update_widgets(self):
+        if not self.vna.connected:
+            self.calibration_label.config(text="Not connected to VNA", fg="red")
             self.save_button.config(state=tk.DISABLED)
-        else:
+            self.load_button.config(state=tk.DISABLED)
+            self.connect_button.config(state=tk.NORMAL)
+            self.disconnect_button.config(state=tk.DISABLED)
+            self.calibration_button.config(state=tk.DISABLED)
+        elif not self.vna.cal_ok:
+            self.calibration_label.config(text="Calibration required", fg="red")
+            self.save_button.config(state=tk.DISABLED)
+            self.load_button.config(state=tk.NORMAL)
+            self.connect_button.config(state=tk.DISABLED)
+            self.disconnect_button.config(state=tk.NORMAL)
+            self.calibration_button.config(state=tk.NORMAL)
+        else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
             text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Isolation calibration: {iso}".format(
                     start=p.start, stop=p.stop, points=p.points, power=p.power, iso=("Yes" if p.isolation_cal else "No"),
                     s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
             self.calibration_label.config(text=text, fg="black")
             self.save_button.config(state=tk.NORMAL)
+            self.load_button.config(state=tk.NORMAL)
+            self.connect_button.config(state=tk.DISABLED)
+            self.disconnect_button.config(state=tk.NORMAL)
+            self.calibration_button.config(state=tk.NORMAL)
         
     def calibration_task(self, step, option):
         self.vna.calibrate(step, option)
@@ -172,10 +184,10 @@ class CalDialog():
         config_meas_group.pack(fill=tk.NONE,expand=tk.NO,side=tk.TOP)
 
         # Labels for start, stop, step rows
-        tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1)
-        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1)
-        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1)
-        tk.Label(config_meas_group,text="Power (dB)").grid(row=5,column=1)
+        tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Power (dB)").grid(row=5,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = {}
         self.entries = ['start','stop','points','power']
@@ -185,13 +197,13 @@ class CalDialog():
             self.entry_strings[name] = tk.StringVar()
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
-            tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key",
-                validatecommand=(self.top.register(self.parent.validate_entry), "%P", i)).grid(row=i+2,column=2)
+            tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key", width=7,
+                validatecommand=(self.top.register(self.parent.validate_entry), "%P", i)).grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
             
         btn_group =  tk.Frame(self.config_frame)
         btn_group.pack(side=tk.BOTTOM,fill=tk.NONE)
-        tk.Button(btn_group, text="Begin calibration", command=self.begin).grid(row=1,column=1,padx=5,pady=5)
-        tk.Button(btn_group, text="Cancel", command=lambda: self.top.destroy()).grid(row=1,column=2,padx=5,pady=5)
+        tk.Button(btn_group, text="Begin calibration", command=self.begin).grid(row=1,column=1,padx=PADDING,pady=PADDING)
+        tk.Button(btn_group, text="Cancel", command=lambda: self.top.destroy()).grid(row=1,column=2,padx=PADDING,pady=PADDING)
     
     #def make_widgets_prompt(self):
         
