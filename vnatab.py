@@ -167,8 +167,19 @@ class VNATab(tk.Frame):
             self.gpib_entry.config(state=tk.DISABLED)
         else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
-            text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Isolation calibration: {iso}".format(
-                    start=p.start, stop=p.stop, points=p.points, power=p.power, iso=("Yes" if p.isolation_cal else "No"),
+            cal_type = ""
+            if p.cal_type == vna.CalType.S11:
+                cal_type = "1-port (S11)"
+            elif p.cal_type == vna.CalType.S22:
+                cal_type = "1-port (S22)"
+            elif p.cal_type == vna.CalType.FULL:
+                cal_type = "2-port "
+                if p.isolation_cal:
+                    cal_type += "with isolation"
+                else:
+                    cal_type += "without isolation"
+            text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
+                    start=p.start, stop=p.stop, points=p.points, power=p.power, cal=cal_type,
                     s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
             self.calibration_label.config(text=text, fg="black")
             self.save_button.config(state=tk.NORMAL)
