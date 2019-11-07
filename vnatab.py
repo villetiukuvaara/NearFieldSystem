@@ -137,7 +137,7 @@ class VNATab(tk.Frame):
                 self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration imcomplete!")
                 return
-            
+
             ans = tk.messagebox.askokcancel("Calibration Wizard", vna.CAL_STEPS[step])
             self.cal_step_done = False
             threading.Thread(target=lambda ans=ans: self.calibration_task(cal_type, step, ans)).start()
@@ -145,7 +145,7 @@ class VNATab(tk.Frame):
         self.after(SLEEP, lambda: self.calibration_monitor(cal_type))
         
     def calibration_task(self, cal_type, step, option):
-        self.next_cal_step = self.vna.calibrate(cal_type, step, option)
+        self.next_cal_step = self.vna.calibrate(step, option)
         self.cal_step_done = True
         
     def update_widgets(self):
@@ -232,8 +232,9 @@ class CalDialog():
     
     def begin(self):
         try:
+            cal_type = vna.CalType(self.cal_type.get())
             params = vna.FreqSweepParams(float(self.entry_strings['start'].get()), float(self.entry_strings['stop'].get()),
-            int(self.entry_strings['points'].get()), float(self.entry_strings['power'].get()))
+            int(self.entry_strings['points'].get()), float(self.entry_strings['power'].get()), cal_type)
             
             v = params.validation_messages()
             if v is None:
