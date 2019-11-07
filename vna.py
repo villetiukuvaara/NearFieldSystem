@@ -19,6 +19,8 @@ POINTS_MAX = 1601 # Number of steps
 POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
+FREQ_DECIMALS = 2
+POWER_DECIMALS = 1
 
 class VNAError(Exception):
     pass
@@ -30,12 +32,12 @@ class CalType(Enum):
 
 class FreqSweepParams():
     def __init__(self, start, stop, points, power, cal_type, isolation_cal=False):
-        self.start = start
-        self.stop = stop
-        self.points = points
-        self.power = power
-        self.cal_type = cal_type
-        self.isolation_cal = isolation_cal
+        self.start = start   # Start freq in GHz
+        self.stop = stop    # Stop freq in GHz
+        self.points = points   # Number of points
+        self.power = power    # Power in dBm
+        self.cal_type = cal_type   # CalType enum
+        self.isolation_cal = isolation_cal   # Was isolation done for 2-port?
     
 #    def validate():
 #        return (self.start >= FREQ_MIN and self.stop <= FREQ_MAX
@@ -248,7 +250,7 @@ class VNA():
     def calibrate(self, cal_step, option):
         time.sleep(0.5)
         self.cal_ok = False
-        util.dprint('Done cal step {} with option={}'.format(cal_step, option))
+        util.dprint('Call cal step {} with option={}'.format(cal_step, option))
         
         self.cal_ok = False
         next_step = None
@@ -257,6 +259,12 @@ class VNA():
             return CalStep.INCOMPLETE
         
         if cal_step == CalStep.BEGIN:
+            # First, set up the VNA with the desired calibration parameters
+            self.set_start_freq("{a:.{b}f}GHz".format(a = self.cal_params.start, b = FREQ_DECIMALS))
+            self.set_stop_freq("{a:.{b}f}GHz".format(a = self.cal_params.stop, b = FREQ_DECIMALS))
+            self.set_points("{a:d}".format(a = self.cal_params.points, b = FREQ_DECIMALS))
+            self.set_power("{a:.{b}f}".format(a = self.cal_params.power, b = POWER_DECIMALS))
+            
             self.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
             if self.cal_params.cal_type == CalType.S11:
                 self.write("CALIS111;")
