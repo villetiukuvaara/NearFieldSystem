@@ -15,7 +15,7 @@ PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
 DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f}".format(
-                start=vna.FREQ_MIN, stop=vna.FREQ_MAX, points=vna.POINTS_MAX, power=vna.POWER_MAX,
+                start=vna.FREQ_MIN, stop=vna.FREQ_MAX, points=vna.POINTS_MAX, power=vna.POWER_MIN,
                 s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
 DEFAULT_ADDRESS = 16
 
@@ -90,7 +90,7 @@ class VNATab(tk.Frame):
         
     def validate_entry(self, P, decimals):
         if decimals == "True":
-            m = re.match("^(-?[0-9]*)(\.?[0-9]*)?$", P)
+            m = re.match("^-?([0-9]*)(\.?[0-9]*)?$", P)
             try:
                 if m is None or len(m.group(1)) > 2 or len(m.group(2)) > FREQ_DECIMALS + 1:
                     return False
@@ -168,11 +168,11 @@ class VNATab(tk.Frame):
         else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
             cal_type = ""
-            if p.cal_type == vna.CalType.S11:
+            if p.cal_type == vna.CalType.CALIS111:
                 cal_type = "1-port (S11)"
-            elif p.cal_type == vna.CalType.S22:
+            elif p.cal_type == vna.CalType.CALIS221:
                 cal_type = "1-port (S22)"
-            elif p.cal_type == vna.CalType.FULL:
+            elif p.cal_type == vna.CalType.CALIFUL2:
                 cal_type = "2-port "
                 if p.isolation_cal:
                     cal_type += "with isolation"
@@ -206,10 +206,10 @@ class CalDialog():
         type_group.pack(side=tk.TOP,fill=tk.X,padx=PADDING,pady=PADDING)
         types = ["1-port (S11)", "1-port (S22)", "Full 2-port"]
         self.cal_type = tk.IntVar()
-        for i,typ in enumerate(vna.CalType):
+        for i,typ in enumerate([vna.CalType.CALIS111, vna.CalType.CALIS221, vna.CalType.CALIFUL2]):
             tk.Radiobutton(type_group, text=types[i],value=typ.value,
                            variable=self.cal_type).pack(anchor=tk.W)
-        self.cal_type.set(vna.CalType.FULL.value)
+        self.cal_type.set(vna.CalType.CALIFUL2.value)
         
         config_meas_group = tk.LabelFrame(self.config_frame);
         config_meas_group.pack(side=tk.TOP,fill=tk.X,padx=PADDING,pady=PADDING)
@@ -253,8 +253,8 @@ class CalDialog():
                 step = vna.CalStep.BEGIN
                 self.parent.vna.set_calibration_params(params)
                 self.parent.cal_step_done = False
-                threading.Thread(target=lambda: self.parent.calibration_task(vna.CalType.S11, step, True)).start()
-                self.parent.calibration_monitor(vna.CalType.S11)
+                threading.Thread(target=lambda: self.parent.calibration_task(vna.CalType.CALIS111, step, True)).start()
+                self.parent.calibration_monitor(vna.CalType.CALIS111)
                 return
             else:
                 m = 'Please correct the parameters.\n\n{}'.format('\n'.join(v))

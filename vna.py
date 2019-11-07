@@ -26,9 +26,17 @@ class VNAError(Exception):
     pass
 
 class CalType(Enum):
-    S11 = 0
-    S22 = 1
-    FULL = 2
+    CALIRESP = 0
+    CALIRAI = 1
+    CALIS111 = 2
+    CALIS221 = 3
+    CALIFUL2 = 4
+    
+CAL_DATA_LENGTH = {CalType.CALIRESP : 1,
+              CalType.CALIRAI : 2,
+              CalType.CALIS111 : 3,
+              CalType.CALIS221 : 3,
+              CalType.CALIFUL2 : 12}
 
 class FreqSweepParams():
     def __init__(self, start, stop, points, power, cal_type, isolation_cal=False):
@@ -158,6 +166,12 @@ class VNA():
         else:
             return self.vna.read()
     
+    def query(self, msg):
+        if self.dummy:
+            return "1"
+        else:
+            return self.vna.query(msg)
+    
     def set_start_freq(self,startF="",units=""):
         '''Sets the start frequency parameter on the VNA.
         Returns the actual number of hertz to which the parameter in the VNA changed.
@@ -213,22 +227,37 @@ class VNA():
         self.write("SPLID4;")
         self.write("OPC?;WAIT;")
 
-    def get_calibration_list(self):
+    #def get_calibration_data(self, cal_type):
+    #    pass
+
+    def get_calibration_data(self):
         '''Returns the calibration type and the calibration values currently loaded on the VNA.
         First it verifies the calibration that is loaded on the VNA.
         Then it creates a list with the value arrays in teh clalibration.
         Returns these two values separately.'''
+        data = {}
+        self.write("FORM4;")
+        for t in CalType:
+            name = t.name
+            if(bool(int(self.query(name+"?;")))):
+                data2 = []
+                for i in range(CAL_DATA_LENGTH[t]):
+                    data2.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";"))
+                data[t] = data2
+        
+        return data
+        
         calt=(("CALIRESP",1),("CALIRAI",2),("CALIS111",3),("CALIS221",3),("CALIFUL2",12))
         caliT=""
         n=0
         for i in calt:
-            if(bool(int(self.vna.query(i[0]+"?;")))): #Query has both functionalities, write and read, in the same method
+            if(bool(int(self.query(i[0]+"?;")))): #Query has both functionalities, write and read, in the same method
                 caliT=i[0]
                 n=i[1]
         valsCalLst=[]
         self.write("FORM4;")
         for i in range(n):
-            valsCalLst.append(self.vna.query("OUTPCALC"+"{:02d}".format(i+1)+";")) #Formmating to ask for the correct data array
+            valsCalLst.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";")) #Formmating to ask for the correct data array
         return caliT,valsCalLst
     
     def set_calibration_data(self,caliT,valsCalStr):
@@ -266,13 +295,13 @@ class VNA():
             self.set_power("{a:.{b}f}".format(a = self.cal_params.power, b = POWER_DECIMALS))
             
             self.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
-            if self.cal_params.cal_type == CalType.S11:
+            if self.cal_params.cal_type == CalType.CALIS111:
                 self.write("CALIS111;")
                 next_step = CalStep.OPEN_P1
-            elif self.cal_params.cal_type == CalType.S22:
-                self.write("CALIS222;")
+            elif self.cal_params.cal_type == CalType.CALIS221:
+                self.write("CALIS221;")
                 next_step = CalStep.OPEN_P2
-            elif self.cal_params.cal_type == CalType.FULL:
+            elif self.cal_params.cal_type == CalType.CALIFUL2:
                 self.write("CALIFUL2;")
                 self.write("REFL;")
                 next_step = CalStep.OPEN_P1
@@ -293,12 +322,13 @@ class VNA():
             self.write("OPC?;STANA;") #Choose the first standard (A)
             self.read()
             self.write("DONE;")
-            if self.cal_params.cal_type == CalType.S11:
+            if self.cal_params.cal_type == CalType.CALIS111:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
+                self.write("PG;")
                 next_step = CalStep.COMPLETE
                 self.cal_ok = True
-            elif self.cal_params.cal_type == CalType.FULL:
+            elif self.cal_params.cal_type == CalType.CALIFUL2:
                 next_step = CalStep.OPEN_P2
             else:
                 raise VNAError("Invalid calibration type/step")
@@ -317,12 +347,13 @@ class VNA():
             self.write("OPC?;STANA;") #Choose the first standard (A)
             self.read()
             self.write("DONE;")
-            if self.cal_params.cal_type == CalType.S22:
+            if self.cal_params.cal_type == CalType.CALIS221:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
+                self.write("PG;")
                 next_step = CalStep.COMPLETE
                 self.cal_ok = True
-            elif self.cal_params.cal_type == CalType.FULL:
+            elif self.cal_params.cal_type == CalType.CALIFUL2:
                 next_step = CalStep.THRU
             else:
                 raise VNAError("Invalid calibration type/step")
@@ -355,6 +386,7 @@ class VNA():
                 
             self.write("OPC?;SAV2;") #Complete the calibration
             self.read()
+            self.write("PG;")
             
             next_step = CalStep.COMPLETE
             self.cal_ok = True   
@@ -561,3 +593,4 @@ class VNA():
 
 if __name__ == "__main__":
     v = VNA(False)
+    v.connect(16)
