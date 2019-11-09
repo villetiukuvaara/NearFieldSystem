@@ -18,14 +18,14 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
         self.dmc = DMC(True)
-        self.vna = vna.VNA(False)
+        self.vna = vna.VNA(True)
         self.make_widgets()
         self.gui_ready = True
 
     def make_widgets(self):
         self.tabs = ttk.Notebook(self.win)
         self.motion_tab = MotionTab(self.tabs, self.dmc)
-        self.vna_tab = VNATab(self.tabs, self.vna)
+        self.vna_tab = VNATab(self.tabs, self.vna, self)
         self.measure_tab = ttk.Frame(self.tabs)
         self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")
@@ -41,6 +41,21 @@ class NearFieldGUI:                            # not a widget subbclass
         self.motion_tab.clean_up()
         self.dmc.clean_up()
         self.win.destroy()
+    
+    def enable_tabs(self, enabled=None):
+        pass
+        # Need to implement
+#        if enabled == None:
+#            for t in self.tabs.tabs():
+#            if enabled == t:
+#                self.tabs.tab(t, state=tk.NORMAL)
+#        else:
+#            for t in self.tabs.tabs():
+#                if enabled == t:
+#                    self.tabs.tab(t, state=tk.NORMAL)
+#                else:
+#                    #t.config(state=tk.DISABLED)
+#                     self.tabs.tab(t, state=tk.DISABLED)
 
 if __name__ == '__main__':
     util.debug_messages = True

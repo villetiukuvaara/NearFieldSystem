@@ -3,12 +3,16 @@ GUI tab for configuring the spatial measurement region
 '''
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 from enum import Enum
 import util
 import re
 from DMC import *
 import vna
 import threading
+import os
+import time
+import pickle
 
 SLEEP = 100
 PADDING = 5
@@ -21,8 +25,10 @@ DEFAULT_ADDRESS = 16
 
 class VNATab(tk.Frame):
     
-    def __init__(self, parent=None, vna_obj=None):
+    def __init__(self, parent, vna_obj, top):
+        self.top = top
         self.gui_ready = False
+        self.disable_widgets = False
         tk.Frame.__init__(self, parent)             # do superclass init
         self.vna = vna_obj
         self.pack()
@@ -55,9 +61,9 @@ class VNATab(tk.Frame):
         self.disconnect_button.grid(row=1,column=2,padx=PADDING,pady=PADDING)
         self.calibration_button = tk.Button(cal_btn_group, text="Calibration wizard",command=self.calibrate_btn_callback,width=30)
         self.calibration_button.grid(row=2,column=1,columnspan=2,padx=PADDING,pady=PADDING)
-        self.load_button = tk.Button(cal_btn_group, text="Load calibration",width=15)
+        self.load_button = tk.Button(cal_btn_group, text="Load calibration",command=self.load_btn_callback,width=15)
         self.load_button.grid(row=3,column=1,padx=PADDING,pady=PADDING)
-        self.save_button = tk.Button(cal_btn_group, text="Save calibration",width=15)
+        self.save_button = tk.Button(cal_btn_group, text="Save calibration",command=self.save_btn_callback, width=15)
         self.save_button.grid(row=3,column=2,padx=PADDING,pady=PADDING)
         
         self.calibration_label = tk.Label(calibrate_group)
@@ -124,7 +130,14 @@ class VNATab(tk.Frame):
         else:
             self.vna.disconnect()
         self.update_widgets()
-            
+        
+    def save_btn_callback(self):
+        SaveDialog(self).begin()
+    
+    def load_btn_callback(self):
+        pass
+        # Need to implement laod dialog
+    
     def calibration_monitor(self, cal_type):
         if self.cal_step_done:
             step = self.next_cal_step
@@ -149,7 +162,16 @@ class VNATab(tk.Frame):
         self.cal_step_done = True
         
     def update_widgets(self):
-        if not self.vna.connected:
+        if self.disable_widgets:
+            #self.calibration_label.config(text="Not connected to VNA", fg="red")
+            self.save_button.config(state=tk.DISABLED)
+            self.load_button.config(state=tk.DISABLED)
+            self.connect_button.config(state=tk.DISABLED)
+            self.disconnect_button.config(state=tk.DISABLED)
+            self.calibration_button.config(state=tk.DISABLED)
+            self.gpib_entry.config(state=tk.DISABLED)
+            self.top.enable_tabs(False)
+        elif not self.vna.connected:
             self.calibration_label.config(text="Not connected to VNA", fg="red")
             self.save_button.config(state=tk.DISABLED)
             self.load_button.config(state=tk.DISABLED)
@@ -264,5 +286,51 @@ class CalDialog():
             tk.messagebox.showerror("Configuration Error", "Parameters are missing")
         
         self.top.lift()
+        
+
+class SaveDialog():
+    def __init__(self, parent):
+        self.parent = parent
     
+    def begin(self):
+        self.parent.disable_widgets = True
+        self.parent.update_widgets()
+        
+        my_filetypes = [('calibration files', '.cal'),("all files","*.*")]
+        self.filename = filedialog.asksaveasfilename(parent=self.parent,
+                                      initialdir=os.getcwd(),
+                                      title="Please select a file name for saving:",
+                                      filetypes=my_filetypes)
+        
+        self.top = tk.Toplevel(self.parent)
+        self.top.protocol("WM_DELETE_WINDOW", lambda: None) # Disable X button
+        self.top.title("Save File")
+        self.top.resizable(False, False)
+        
+        self.info = tk.Label(self.top, text="Hold on... saving calibration",width=20)
+        self.info.pack(side=tk.TOP,padx=PADDING,pady=PADDING)
+        
+        self.ok_btn = tk.Button(self.top,text="OK",command=self.top.destroy)
+        self.ok_btn.config(state=tk.DISABLED)
+        self.ok_btn.pack(side=tk.TOP,padx=PADDING,pady=PADDING)
+        
+        # Do slow tasks on background thread
+        threading.Thread(target=self.background_task).start()
+    
+    def background_task(self):
+        params = self.parent.vna.get_calibration_params()
+        data = self.parent.vna.get_calibration_data()
+        pickle.dump([params, data], open(self.filename, "wb+" ))
+        util.dprint("Calibration saved")
+        
+        self.parent.disable_widgets = False
+        self.parent.update_widgets()
+        
+        self.info.config(text="Calibration saved")
+        self.top.protocol("WM_DELETE_WINDOW", self.top.destroy) # Enable X button
+        self.ok_btn.config(state=tk.NORMAL)
+    
+    def make_widgets_config(self):
+        self.config_frame = tk.Frame(self.top)
+        self.config_frame.pack()
         
