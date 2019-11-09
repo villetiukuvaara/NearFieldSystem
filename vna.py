@@ -246,28 +246,28 @@ class VNA():
                 data[t] = data2
         
         return data
-        
-        calt=(("CALIRESP",1),("CALIRAI",2),("CALIS111",3),("CALIS221",3),("CALIFUL2",12))
-        caliT=""
-        n=0
-        for i in calt:
-            if(bool(int(self.query(i[0]+"?;")))): #Query has both functionalities, write and read, in the same method
-                caliT=i[0]
-                n=i[1]
-        valsCalLst=[]
-        self.write("FORM4;")
-        for i in range(n):
-            valsCalLst.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";")) #Formmating to ask for the correct data array
-        return caliT,valsCalLst
     
-    def set_calibration_data(self,caliT,valsCalStr):
+    def set_calibration_data(self, data):
         '''Loads calibration data to a VNA.
         Parameters:
         caliT: String specifying the calibration type.
         valsCalStr: List of strings containing the different arrays of calibration coefficients.
         '''
-        calt={"CALIRESP":1,"CALIRAI":2,"CALIS111":3,"CALIS221":3,"CALIFUL2":12}
         self.write("FORM4;")
+        
+        for key,vals in data.items():
+            self.write(key.name + ";")
+            for i,v in enumerate(vals):
+                self.write("INPUCALC{:02d} ".format(i+1) + v)
+            
+        self.write("SAVC;") #Complete coefficient transfer
+        #self.write("CORRON;") #Turn on error correction
+        self.write("SING;") #Single sweep
+        self.cal_ok = True
+        return
+    
+        calt={"CALIRESP":1,"CALIRAI":2,"CALIS111":3,"CALIS221":3,"CALIFUL2":12}
+        
         self.write(caliT+";")
         for i in range(len(valsCalStr)):
             self.write("INPUCALC"+"{:02d} ".format(i+1)+valsCalStr[i]) #Formmating to ask for the correct data array
@@ -592,5 +592,5 @@ class VNA():
         return tuple(res)
 
 if __name__ == "__main__":
-    v = VNA(False)
+    v = VNA(True)
     v.connect(16)

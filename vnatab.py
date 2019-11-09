@@ -13,6 +13,7 @@ import threading
 import os
 import time
 import pickle
+import traceback
 
 SLEEP = 100
 PADDING = 5
@@ -132,10 +133,10 @@ class VNATab(tk.Frame):
         self.update_widgets()
         
     def save_btn_callback(self):
-        SaveDialog(self).begin()
+        SaveLoadDialog(self, True).begin()
     
     def load_btn_callback(self):
-        pass
+        SaveLoadDialog(self, False).begin()
         # Need to implement laod dialog
     
     def calibration_monitor(self, cal_type):
@@ -288,26 +289,48 @@ class CalDialog():
         self.top.lift()
         
 
-class SaveDialog():
-    def __init__(self, parent):
+class SaveLoadDialog():
+    # If save is true, this dialog saves the calibration
+    # Otherwise, it loads a calibration
+    def __init__(self, parent, save):
         self.parent = parent
+        self.save = save
     
     def begin(self):
         self.parent.disable_widgets = True
         self.parent.update_widgets()
         
         my_filetypes = [('calibration files', '.cal'),("all files","*.*")]
-        self.filename = filedialog.asksaveasfilename(parent=self.parent,
+        #my_filetypes = [('calibration files', '*.cal')]
+        if self.save:
+            self.filename = filedialog.asksaveasfilename(parent=self.parent,
                                       initialdir=os.getcwd(),
-                                      title="Please select a file name for saving:",
+                                      title="Select file",
+                                      filetypes=my_filetypes,
+                                      defaultextension=".cal")
+        else:
+            self.filename = filedialog.askopenfilename(parent=self.parent,
+                                      initialdir=os.getcwd(),
+                                      title="Select file",
                                       filetypes=my_filetypes)
+        
+        if self.filename is "": #User did not select a file
+            self.parent.disable_widgets = False
+            self.parent.update_widgets()
+            tk.messagebox.showerror(message="No file selected!")
+            return
         
         self.top = tk.Toplevel(self.parent)
         self.top.protocol("WM_DELETE_WINDOW", lambda: None) # Disable X button
         self.top.title("Save File")
         self.top.resizable(False, False)
         
-        self.info = tk.Label(self.top, text="Hold on... saving calibration",width=20)
+        if self.save:
+            msg = "Hold on... saving calibration"
+        else:
+            msg = "Hold on... loading calibration"
+        
+        self.info = tk.Label(self.top,text=msg,width=20)
         self.info.pack(side=tk.TOP,padx=PADDING,pady=PADDING)
         
         self.ok_btn = tk.Button(self.top,text="OK",command=self.top.destroy)
@@ -318,17 +341,26 @@ class SaveDialog():
         threading.Thread(target=self.background_task).start()
     
     def background_task(self):
-        params = self.parent.vna.get_calibration_params()
-        data = self.parent.vna.get_calibration_data()
-        pickle.dump([params, data], open(self.filename, "wb+" ))
-        util.dprint("Calibration saved")
-        
-        self.parent.disable_widgets = False
-        self.parent.update_widgets()
-        
-        self.info.config(text="Calibration saved")
-        self.top.protocol("WM_DELETE_WINDOW", self.top.destroy) # Enable X button
-        self.ok_btn.config(state=tk.NORMAL)
+        try:
+            if self.save:
+                params = self.parent.vna.get_calibration_params()
+                data = self.parent.vna.get_calibration_data()
+                pickle.dump([params, data], open(self.filename, "wb+" ))
+                msg = "Calibration saved"
+            else:
+                data = pickle.load(open(self.filename, "rb" ))
+                self.parent.vna.set_calibration_params(data[0])
+                self.parent.vna.set_calibration_data(data[1])
+                msg = "Calibration loaded"
+        except:
+            self.info.config(width=60)
+            msg = "Save/load error\n\n" + traceback.format_exc()
+        finally:
+            self.parent.disable_widgets = False
+            self.parent.update_widgets()
+            self.info.config(text=msg)
+            self.top.protocol("WM_DELETE_WINDOW", self.top.destroy) # Enable X button
+            self.ok_btn.config(state=tk.NORMAL)
     
     def make_widgets_config(self):
         self.config_frame = tk.Frame(self.top)
