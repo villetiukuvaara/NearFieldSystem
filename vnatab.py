@@ -88,10 +88,15 @@ class VNATab(tk.Frame):
             self.entry_strings.append(tk.StringVar())
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
-            self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
-                width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
+            if pos == 'points':
+                self.entries.append(tk.ttk.Combobox(config_meas_group, values=vna.POINTS, width=5))
+                self.entries[i].set(vna.POINTS_DEFAULT)
+            else:
+                self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
+                                             width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
+                self.entry_strings[i].set(DEFAULT_PARAMS[i])
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
-            self.entry_strings[i].set(DEFAULT_PARAMS[i])
+            
             
         self.update_widgets()
         
@@ -247,28 +252,39 @@ class CalDialog():
         self.entries = ['start','stop','points','power']
         val_decimals = [True, True, False, True]
         self.step_labels = []
+        self.points_entry = None
         
         for i,name in enumerate(self.entries):
             self.entry_strings[name] = tk.StringVar()
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
-            tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key", width=7,
-                validatecommand=(self.top.register(self.parent.validate_entry), "%P", val_decimals[i])).grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
-            self.entry_strings[name].set(DEFAULT_PARAMS[i])
+            if name == 'points':
+                self.points_entry = tk.ttk.Combobox(config_meas_group, values=vna.POINTS, width=5)
+                self.points_entry.set(vna.POINTS_DEFAULT)
+                widget = self.points_entry
+            else:
+                widget = tk.Entry(config_meas_group, textvariable=self.entry_strings[name], validate="key", width=7,
+                         validatecommand=(self.top.register(self.parent.validate_entry), "%P", val_decimals[i]))
+                self.entry_strings[name].set(DEFAULT_PARAMS[i])
+                
+            widget.grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+               
             
         btn_group =  tk.Frame(self.config_frame)
         btn_group.pack(side=tk.BOTTOM,fill=tk.NONE)
         tk.Button(btn_group, text="Begin calibration", command=self.begin).grid(row=1,column=1,padx=PADDING,pady=PADDING)
         tk.Button(btn_group, text="Cancel", command=lambda: self.top.destroy()).grid(row=1,column=2,padx=PADDING,pady=PADDING)
-    
-    #def make_widgets_prompt(self):
-        
-    
+
     def begin(self):
         try:
             cal_type = vna.CalType(self.cal_type.get())
             params = vna.FreqSweepParams(float(self.entry_strings['start'].get()), float(self.entry_strings['stop'].get()),
-            int(self.entry_strings['points'].get()), float(self.entry_strings['power'].get()), cal_type)
+            int(self.points_entry.get()), float(self.entry_strings['power'].get()), cal_type)
+            
+            #points = min(vna.POINTS, key=lambda x:abs(x-params.points))
+            
+            #if points != params.points:
+            #    tk.messagebox.askokcancel("Number of points rounded", "The number of points was rounded to the nearest avaiable")
             
             v = params.validation_messages()
             if v is None:

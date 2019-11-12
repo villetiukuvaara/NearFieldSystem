@@ -16,6 +16,7 @@ FREQ_MIN = 20 # in GHZ
 FREQ_MAX = 60
 POINTS_MIN = 3 # Number of steps
 POINTS_MAX = 1601 # Number of steps
+POINTS_DEFAULT = 1601
 POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
