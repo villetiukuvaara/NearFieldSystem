@@ -15,6 +15,11 @@ import time
 import pickle
 import traceback
 
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.figure import Figure
+import numpy as np
+
 SLEEP = 100
 PADDING = 5
 FREQ_DECIMALS = 2
@@ -71,8 +76,10 @@ class VNATab(tk.Frame):
         self.calibration_label.pack()
 
         # Label frame for configuring measurement
-        config_meas_group = tk.LabelFrame(self, text="Configure Measurement");
-        config_meas_group.pack(side=tk.LEFT,fill=tk.BOTH,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
+        meas_group = tk.Frame(self)
+        meas_group.pack(side=tk.LEFT,fill=tk.BOTH)
+        config_meas_group = tk.LabelFrame(meas_group, text="Configure Measurement");
+        config_meas_group.pack(side=tk.TOP,fill=tk.BOTH,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
 
         # Labels for start, stop, step rows
         tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
@@ -96,7 +103,8 @@ class VNATab(tk.Frame):
                                              width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
                 self.entry_strings[i].set(DEFAULT_PARAMS[i])
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
-            
+        
+        MeasurementPlot(meas_group,"Title").pack(side=tk.TOP,fill=tk.BOTH)    
             
         self.update_widgets()
         
@@ -381,4 +389,58 @@ class SaveLoadDialog():
     def make_widgets_config(self):
         self.config_frame = tk.Frame(self.top)
         self.config_frame.pack()
+
+class MeasurementPlot(tk.Frame):
+    def __init__(self, parent, name):
+        tk.Frame.__init__(self, parent) # do superclass init
+        self.name = name
+        self.pack()
+        self.make_widgets() # attach widgets to self
+        self.update_widgets()
+        self.current_plot = None
+    
+    # data is an array of MeasData
+    def set_data(self, data):
+        pass
         
+    def make_widgets(self):
+        self.fig = Figure(figsize=(5, 4), dpi=100,facecolor=(.9375,.9375,.9375))
+        self.ax = self.fig.add_subplot(111)
+        #self.ax.plot(t, 2 * np.sin(2 * np.pi * t))
+        
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self)  # A tk.DrawingArea.
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        
+        options_group = tk.Frame(self)
+        options_group.pack(side=tk.LEFT)
+        #options_group.grid_columnconfigure(1,minsize=100)
+        self.plot_select = tk.ttk.Combobox(options_group,width=8)
+        self.plot_select.pack(side=tk.LEFT,padx=5)
+        toolbar = NavigationToolbar2Tk(self.canvas, options_group)
+        toolbar.update()
+        toolbar.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+    
+    def update_widgets(self):
+        #self.ax.clear()
+        freq = np.linspace(20e9, 30e9, 300)
+        mag = -5+ 3/10e9*(freq-min(freq)) + np.random.random(len(freq))*0.5
+        phase = -180 + 360/10e9*(freq-min(freq)) + np.random.random(len(freq))
+        
+        colour = 'tab:red'
+        self.ax.plot(freq, mag, 'r-',label='Magnitude',color=colour)
+        self.ax.set_xlabel('Frequency (Hz)')
+        self.ax.set_ylabel('Magnitude (dB)',color=colour)
+        self.ax.tick_params(axis='y', labelcolor=colour)
+        
+        colour = 'tab:blue'
+        ax2 = self.ax.twinx()
+        ax2.plot(freq, phase, label='Phase',color=colour)
+        ax2.set_ylabel('Phase',color=colour)
+        ax2.tick_params(axis='y', labelcolor=colour)
+        self.fig.tight_layout()
+        #self.ax.plo
+    
+        
+        
+    

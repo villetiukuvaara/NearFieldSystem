@@ -33,7 +33,7 @@ class NearFieldGUI:                            # not a widget subbclass
         self.tabs.add(self.measure_tab, text="Run Measurement")
         self.tabs.add(self.results_tab, text="Results")
         self.tabs.pack(expand=True,fill=tk.BOTH)
-    
+        
     # Close resources and clean up when exiting
     # This gets called when X is pressed ("WM_DELETE_WINDOW")
     def clean_up(self):
