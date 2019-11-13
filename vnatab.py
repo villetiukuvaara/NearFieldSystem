@@ -438,7 +438,7 @@ class MeasurementPlot(tk.Frame):
             sp = [d.sparam.value for d in self.data]
             self.plot_select.config(values=sp)
             self.plot_select.set(sp[0])
-            #self.current_sparam = self.data[0].sparam
+            self.current_sparam = self.data[0].sparam
         self.update_widgets()
         
     def make_widgets(self):
