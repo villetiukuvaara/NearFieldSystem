@@ -193,7 +193,16 @@ class VNATab(tk.Frame):
         data = self.vna.measure_all(start, stop, points)
         util.dprint('data len = {} d[0] = {}'.format(len(data), data[0].sparam))
         self.measurement_plot.set_data(data)
-
+    
+    def enable_entries(self, enable):
+        if enable:
+            val = tk.NORMAL
+        else:
+            val = tk.DISABLED
+        for e in self.entries:
+            e.config(state=val)
+        self.points.config(state=val)
+        
     def update_widgets(self):
         if self.disable_widgets:
             #self.calibration_label.config(text="Not connected to VNA", fg="red")
@@ -205,6 +214,7 @@ class VNATab(tk.Frame):
             self.gpib_entry.config(state=tk.DISABLED)
             self.measure_btn.config(state=tk.DISABLED)
             self.top.enable_tabs(False)
+            self.enable_entries(False)
         elif not self.vna.connected:
             self.calibration_label.config(text="Not connected to VNA", fg="red",height=5)
             self.save_button.config(state=tk.DISABLED)
@@ -215,6 +225,7 @@ class VNATab(tk.Frame):
             self.gpib_entry.config(state=tk.NORMAL)
             self.measure_btn.config(state=tk.DISABLED)
             self.measurement_plot.set_data(None)
+            self.enable_entries(False)
         elif not self.vna.cal_ok:
             self.calibration_label.config(text="Calibration required", fg="red",height=5)
             self.save_button.config(state=tk.DISABLED)
@@ -225,6 +236,7 @@ class VNATab(tk.Frame):
             self.gpib_entry.config(state=tk.DISABLED)
             self.measure_btn.config(state=tk.DISABLED)
             self.measurement_plot.set_data(None)
+            self.enable_entries(False)
         else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
             cal_type = ""
@@ -249,6 +261,7 @@ class VNATab(tk.Frame):
             self.calibration_button.config(state=tk.NORMAL)
             self.gpib_entry.config(state=tk.DISABLED)
             self.measure_btn.config(state=tk.NORMAL)
+            self.enable_entries(True)
 
 
 class CalDialog():
@@ -488,8 +501,11 @@ class MeasurementPlot(tk.Frame):
         print('update_widgets {}'.format(self.current_sparam))
         
         if self.data is None:
+            self.plot_select.config(state=tk.DISABLED)
             self.canvas.draw()
             return
+        else:
+            self.plot_select.config(state=tk.NORMAL)
         
         print('{} {}'.format(len(self.data), self.data))
             
