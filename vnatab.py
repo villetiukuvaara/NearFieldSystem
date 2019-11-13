@@ -425,6 +425,7 @@ class MeasurementPlot(tk.Frame):
         
         self.make_widgets() # attach widgets to self
         self.update_widgets()
+        self.background_task()
     
     # data is an array of MeasData
     def set_data(self, data):
@@ -438,7 +439,7 @@ class MeasurementPlot(tk.Frame):
             self.plot_select.config(values=sp)
             self.plot_select.set(sp[0])
             #self.current_sparam = self.data[0].sparam
-        #self.update_widgets()
+        self.update_widgets()
         
     def make_widgets(self):
         self.fig = Figure(figsize=(5, 4), dpi=100,facecolor=(.9375,.9375,.9375))
@@ -466,8 +467,19 @@ class MeasurementPlot(tk.Frame):
         print('{}'.format(self.plot_select.get()))
         self.current_sparam = vna.SParam(self.plot_select.get())
         self.update_widgets()
-    
+        
     def update_widgets(self):
+        self.request_update = True
+    
+    def background_task(self):
+        if self.request_update:
+            self.request_update = False
+            self._update_widgets()
+        self.after(SLEEP, self.background_task)
+        
+    
+    # This should only be called on the tkinter thread
+    def _update_widgets(self):
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
         #freq = np.linspace(20e9, 30e9, 300)
