@@ -158,6 +158,8 @@ class VNATab(tk.Frame):
     
     def load_btn_callback(self):
         SaveLoadDialog(self, False).begin()
+        #self.measurement_plot.set_data(None)
+        #self.measurement_plot.update()
         # Need to implement laod dialog
     
     def calibration_monitor(self, cal_type):
@@ -191,7 +193,6 @@ class VNATab(tk.Frame):
         stop = float(self.entry_strings['stop'].get())*1e9
         points = int(self.points.get())
         data = self.vna.measure_all(start, stop, points)
-        util.dprint('data len = {} d[0] = {}'.format(len(data), data[0].sparam))
         self.measurement_plot.set_data(data)
     
     def enable_entries(self, enable):
@@ -326,12 +327,7 @@ class CalDialog():
             cal_type = vna.CalType(self.cal_type.get())
             params = vna.FreqSweepParams(float(self.entry_strings['start'].get()), float(self.entry_strings['stop'].get()),
             int(self.points_entry.get()), float(self.entry_strings['power'].get()), cal_type)
-            
-            #points = min(vna.POINTS, key=lambda x:abs(x-params.points))
-            
-            #if points != params.points:
-            #    tk.messagebox.askokcancel("Number of points rounded", "The number of points was rounded to the nearest avaiable")
-            
+
             v = params.validation_messages()
             if v is None:
                 self.top.destroy()
@@ -470,14 +466,11 @@ class MeasurementPlot(tk.Frame):
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
-        #options_group.grid_columnconfigure(1,minsize=100)
         toolbar = NavigationToolbar2Tk(self.canvas, self)
         toolbar.update()
         toolbar.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
     def plot_select_callback(self):
-        util.dprint('Plot select {}'.format(self.plot_select.get()))
-        print('{}'.format(self.plot_select.get()))
         self.current_sparam = vna.SParam(self.plot_select.get())
         self.update_widgets()
         
@@ -489,16 +482,11 @@ class MeasurementPlot(tk.Frame):
             self.request_update = False
             self._update_widgets()
         self.after(SLEEP, self.background_task)
-        
     
     # This should only be called on the tkinter thread
     def _update_widgets(self):
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
-        #freq = np.linspace(20e9, 30e9, 300)
-        #mag = -5+ 3/10e9*(freq-min(freq)) + np.random.random(len(freq))*0.5
-        #phase = -180 + 360/10e9*(freq-min(freq)) + np.random.random(len(freq))
-        print('update_widgets {}'.format(self.current_sparam))
         
         if self.data is None:
             self.plot_select.config(state=tk.DISABLED)
@@ -506,17 +494,12 @@ class MeasurementPlot(tk.Frame):
             return
         else:
             self.plot_select.config(state=tk.NORMAL)
-        
-        print('{} {}'.format(len(self.data), self.data))
             
         data = next((d for d in self.data if d.sparam == self.current_sparam), None)
         
         if data == None:
             self.canvas.draw()
             return
-        
-        print('{} {} {} {}'.format(len(data.freq), data.freq[0], len(data.mag), data.mag[0]))
-        
         
         colour = 'tab:red'
         self.ax.plot(data.freq, data.mag, 'r-',label='Magnitude',color=colour)
