@@ -45,8 +45,10 @@ class VNATab(tk.Frame):
         
     def make_widgets(self):
         # Label frame for starting calibration
-        calibrate_group = tk.LabelFrame(self, text="Calibration")
-        calibrate_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
+        left_group = tk.Frame(self)
+        left_group.pack(side=tk.LEFT)
+        calibrate_group = tk.LabelFrame(left_group, text="Calibration")
+        calibrate_group.pack(side=tk.TOP,fill=tk.BOTH,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         gpib_group = tk.Frame(calibrate_group)
         gpib_group.pack(side=tk.TOP)
         
@@ -76,8 +78,8 @@ class VNATab(tk.Frame):
         self.calibration_label.pack()
 
         # Label frame for configuring measurement
-        meas_group = tk.Frame(self)
-        meas_group.pack(side=tk.LEFT,fill=tk.BOTH)
+        meas_group = tk.Frame(left_group)
+        meas_group.pack(side=tk.TOP,fill=tk.BOTH)
         config_meas_group = tk.LabelFrame(meas_group, text="Configure Measurement");
         config_meas_group.pack(side=tk.TOP,fill=tk.BOTH,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
 
@@ -86,25 +88,31 @@ class VNATab(tk.Frame):
         tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
-        self.entry_strings = []
+        self.entry_strings = {}
         self.entries = []
+        self.points = None
         self.step_labels = []
         validation_decimals = [True, True, False]
         
         for i,pos in enumerate(['start','stop','points']):
-            self.entry_strings.append(tk.StringVar())
+            self.entry_strings[pos] = tk.StringVar()
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             if pos == 'points':
-                self.entries.append(tk.ttk.Combobox(config_meas_group, values=vna.POINTS, width=5))
-                self.entries[i].set(vna.POINTS_DEFAULT)
+                self.points = tk.ttk.Combobox(config_meas_group, values=vna.POINTS, width=5)
+                self.entries.append(self.points)
+                self.points.set(vna.POINTS_DEFAULT)
             else:
-                self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[i], validate="key",
+                self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[pos], validate="key",
                                              width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
-                self.entry_strings[i].set(DEFAULT_PARAMS[i])
+                self.entry_strings[pos].set(DEFAULT_PARAMS[i])
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
         
-        MeasurementPlot(meas_group,"Title").pack(side=tk.TOP,fill=tk.BOTH)    
+        self.measure_btn = tk.Button(left_group,text="Take measurement",command=self.measure_btn_callback)
+        self.measure_btn.pack(side=tk.TOP)
+        
+        self.measurement_plot = MeasurementPlot(self,"Title")
+        self.measurement_plot.pack(side=tk.LEFT,fill=tk.BOTH)    
             
         self.update_widgets()
         
@@ -174,7 +182,18 @@ class VNATab(tk.Frame):
     def calibration_task(self, cal_type, step, option):
         self.next_cal_step = self.vna.calibrate(step, option)
         self.cal_step_done = True
-        
+    
+    def measure_btn_callback(self):
+        threading.Thread(target=self.measure_task).start()
+    
+    def measure_task(self):
+        start = float(self.entry_strings['start'].get())*1e9
+        stop = float(self.entry_strings['stop'].get())*1e9
+        points = int(self.points.get())
+        data = self.vna.measure_all(start, stop, points)
+        util.dprint('data len = {} d[0] = {}'.format(len(data), data[0].sparam))
+        self.measurement_plot.set_data(data)
+
     def update_widgets(self):
         if self.disable_widgets:
             #self.calibration_label.config(text="Not connected to VNA", fg="red")
@@ -184,23 +203,28 @@ class VNATab(tk.Frame):
             self.disconnect_button.config(state=tk.DISABLED)
             self.calibration_button.config(state=tk.DISABLED)
             self.gpib_entry.config(state=tk.DISABLED)
+            self.measure_btn.config(state=tk.DISABLED)
             self.top.enable_tabs(False)
         elif not self.vna.connected:
-            self.calibration_label.config(text="Not connected to VNA", fg="red")
+            self.calibration_label.config(text="Not connected to VNA", fg="red",height=5)
             self.save_button.config(state=tk.DISABLED)
             self.load_button.config(state=tk.DISABLED)
             self.connect_button.config(state=tk.NORMAL)
             self.disconnect_button.config(state=tk.DISABLED)
             self.calibration_button.config(state=tk.DISABLED)
             self.gpib_entry.config(state=tk.NORMAL)
+            self.measure_btn.config(state=tk.DISABLED)
+            self.measurement_plot.set_data(None)
         elif not self.vna.cal_ok:
-            self.calibration_label.config(text="Calibration required", fg="red")
+            self.calibration_label.config(text="Calibration required", fg="red",height=5)
             self.save_button.config(state=tk.DISABLED)
             self.load_button.config(state=tk.NORMAL)
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
             self.gpib_entry.config(state=tk.DISABLED)
+            self.measure_btn.config(state=tk.DISABLED)
+            self.measurement_plot.set_data(None)
         else: # Connected and calibration is ok
             p = self.vna.get_calibration_params()
             cal_type = ""
@@ -224,6 +248,7 @@ class VNATab(tk.Frame):
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
             self.gpib_entry.config(state=tk.DISABLED)
+            self.measure_btn.config(state=tk.NORMAL)
 
 
 class CalDialog():
@@ -395,51 +420,89 @@ class MeasurementPlot(tk.Frame):
         tk.Frame.__init__(self, parent) # do superclass init
         self.name = name
         self.pack()
+        self.data = None
+        self.current_sparam = None
+        
         self.make_widgets() # attach widgets to self
         self.update_widgets()
-        self.current_plot = None
     
     # data is an array of MeasData
     def set_data(self, data):
-        pass
+        self.data = data
+        
+        if self.data is None:
+            self.plot_select.config(values=[])
+            self.plot_select.set('')
+        else:
+            sp = [d.sparam.value for d in self.data]
+            self.plot_select.config(values=sp)
+            self.plot_select.set(sp[0])
+            #self.current_sparam = self.data[0].sparam
+        #self.update_widgets()
         
     def make_widgets(self):
         self.fig = Figure(figsize=(5, 4), dpi=100,facecolor=(.9375,.9375,.9375))
         self.ax = self.fig.add_subplot(111)
         #self.ax.plot(t, 2 * np.sin(2 * np.pi * t))
         
+        title_group = tk.Frame(self)
+        title_group.pack(side=tk.TOP,pady=5)
+        tk.Label(title_group, text='Choose parameter to plot: ').pack(side=tk.LEFT)
+        self.plot_select = tk.ttk.Combobox(title_group,width=8)
+        self.plot_select.bind("<<ComboboxSelected>>", lambda e: self.plot_select_callback())
+        self.plot_select.pack(side=tk.LEFT,padx=5)
+        
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)  # A tk.DrawingArea.
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
-        options_group = tk.Frame(self)
-        options_group.pack(side=tk.LEFT)
         #options_group.grid_columnconfigure(1,minsize=100)
-        self.plot_select = tk.ttk.Combobox(options_group,width=8)
-        self.plot_select.pack(side=tk.LEFT,padx=5)
-        toolbar = NavigationToolbar2Tk(self.canvas, options_group)
+        toolbar = NavigationToolbar2Tk(self.canvas, self)
         toolbar.update()
-        toolbar.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+        toolbar.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        
+    def plot_select_callback(self):
+        util.dprint('Plot select {}'.format(self.plot_select.get()))
+        print('{}'.format(self.plot_select.get()))
+        self.current_sparam = vna.SParam(self.plot_select.get())
+        self.update_widgets()
     
     def update_widgets(self):
-        #self.ax.clear()
-        freq = np.linspace(20e9, 30e9, 300)
-        mag = -5+ 3/10e9*(freq-min(freq)) + np.random.random(len(freq))*0.5
-        phase = -180 + 360/10e9*(freq-min(freq)) + np.random.random(len(freq))
+        self.fig.clf()
+        self.ax = self.fig.add_subplot(111)
+        #freq = np.linspace(20e9, 30e9, 300)
+        #mag = -5+ 3/10e9*(freq-min(freq)) + np.random.random(len(freq))*0.5
+        #phase = -180 + 360/10e9*(freq-min(freq)) + np.random.random(len(freq))
+        print('update_widgets {}'.format(self.current_sparam))
+        
+        if self.data is None:
+            self.canvas.draw()
+            return
+        
+        print('{} {}'.format(len(self.data), self.data))
+            
+        data = next((d for d in self.data if d.sparam == self.current_sparam), None)
+        
+        if data == None:
+            self.canvas.draw()
+            return
+        
+        print('{} {} {} {}'.format(len(data.freq), data.freq[0], len(data.mag), data.mag[0]))
+        
         
         colour = 'tab:red'
-        self.ax.plot(freq, mag, 'r-',label='Magnitude',color=colour)
+        self.ax.plot(data.freq, data.mag, 'r-',label='Magnitude',color=colour)
         self.ax.set_xlabel('Frequency (Hz)')
         self.ax.set_ylabel('Magnitude (dB)',color=colour)
         self.ax.tick_params(axis='y', labelcolor=colour)
         
         colour = 'tab:blue'
         ax2 = self.ax.twinx()
-        ax2.plot(freq, phase, label='Phase',color=colour)
+        ax2.plot(data.freq, data.phase, label='Phase',color=colour)
         ax2.set_ylabel('Phase',color=colour)
         ax2.tick_params(axis='y', labelcolor=colour)
         self.fig.tight_layout()
-        #self.ax.plo
+        self.canvas.draw()
     
         
         

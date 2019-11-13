@@ -11,6 +11,7 @@ from enum import Enum
 import time
 import util
 from enum import Enum
+import numpy as np
 
 FREQ_MIN = 20 # in GHZ
 FREQ_MAX = 60
@@ -38,6 +39,12 @@ CAL_DATA_LENGTH = {CalType.CALIRESP : 1,
               CalType.CALIS111 : 3,
               CalType.CALIS221 : 3,
               CalType.CALIFUL2 : 12}
+
+class SParam(Enum):
+    S11 = 'S11'
+    S12 = 'S12'
+    S21 = 'S21'
+    S22 = 'S22'
 
 class FreqSweepParams():
     def __init__(self, start, stop, points, power, cal_type, isolation_cal=False):
@@ -114,6 +121,7 @@ class VNA():
         self.cal_ok = False
         self.connected = False
         self.cal_params = None
+        self.measurement_params = None
         
         self.rm=None
         self.vna=None
@@ -145,6 +153,7 @@ class VNA():
     def disconnect(self):
         if self.dummy:
             self.connected = False
+            self.cal_ok = False
             return 
         
         if self.connected:
@@ -155,6 +164,7 @@ class VNA():
             self.vna = None
             self.rm = None
         self.connected = False
+        self.cal_ok = False
         
     def write(self, msg):
         util.dprint(msg)
@@ -399,24 +409,22 @@ class VNA():
        
     def set_calibration_params(self, params):
         self.cal_params = params
+        self.measurement_params = params
         self.cal_ok = False
     
     def get_calibration_params(self):
         return self.cal_params
 
-    def configure(self,startF,stopF,points,power):
-        '''
-        Receives the parameter values to set and the returns the actual values in the VNA
-        '''
-        aux=[] #Declares list variable
-        aux.append(float(self.setStartF(myNumbers.numb(startF,unit="Hz").dispFreq()))) #Formats the start frequency value, sends it to set the value and converts the response to float to add it to aux
-        aux.append(float(self.setStopF(myNumbers.numb(stopF,unit="Hz").dispFreq()))) #Sets and gets the stop frequency
-        aux.append(int(float(self.setPoints(str(points))))) #Sets and gets the number of points
-        aux.append(float(self.setPower(str(power)))) #Sets and gets the power
+    def configure(self,sweep_params):
+        self.measurement_params = sweep_params
+        self.set_start_freq("{a:.{b}f}GHz".format(a = sweep_params.start, b = FREQ_DECIMALS))
+        self.set_stop_freq("{a:.{b}f}GHz".format(a = sweep_params.stop, b = FREQ_DECIMALS))
+        self.set_points("{a:d}".format(a = sweep_params.points, b = FREQ_DECIMALS))
+        self.set_power("{a:.{b}f}".format(a = sweep_params.power, b = POWER_DECIMALS))
+
         self.disp4Ch() #Display four channels
         self.sweep() #Update graphs
         self.write("FORM5;") #Use binary format to output data
-        return aux
 
     def sweep(self):
         '''
@@ -477,6 +485,52 @@ class VNA():
         for i in range(0,len(aux),2): #Only get the first value of every data pair because the other is zero
             res.append(aux[i])
         return tuple(res)
+    
+    def measure(self,sparam, start, stop, points):
+        if not self.connected or not self.cal_ok:
+            return None
+        
+        if self.dummy:
+            return self.random_data(sparam, start, stop, points)
+    
+    def measure_all(self, start, stop, points):
+        results = []
+        if self.cal_params.cal_type == CalType.CALIFUL2:
+            for sp in SParam:
+                results.append(self.measure(sp, start, stop, points))
+        elif self.cal_params.cal_type == CalType.CALIS111:
+            results.append(self.measure(SParam.S11, start, stop, points))
+        elif self.cal_params.cal_type == CalType.CALIS221:
+            results.append(self.measure(SParam.S22, start, stop, points))
+        return results
+    
+    def random_data(self, sparam=SParam.S11, start=None, stop=None, points=None):
+        if start == None:
+            start = self.cal_params.start
+        if stop == None:
+            stop = self.cal_params.stop
+        if points == None:
+            points = self.cal_params.points
+        
+        freq = np.linspace(start, stop, points)
+        diff = stop - start
+        mag = -5+ 3/diff*(freq-start) + np.random.random(len(freq))*0.5
+        phase = -180 + 360/diff*(freq-start) + np.random.random(len(freq))*5
+        
+        sweep_params = self.cal_params
+        sweep_params.start = start
+        sweep_params.stop = stop
+        sweep_params.points = points
+        
+        return MeasData(sparam, sweep_params, freq, mag, phase)
+    
+class MeasData():
+    def __init__(self, sparam, sweep_params, freq, mag, phase):
+        self.sparam = sparam
+        self.sweep_params = sweep_params
+        self.freq = freq
+        self.mag = mag
+        self.phase = phase
 
 if __name__ == "__main__":
     v = VNA(True)
