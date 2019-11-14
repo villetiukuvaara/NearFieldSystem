@@ -167,10 +167,12 @@ class VNATab(tk.Frame):
             step = self.next_cal_step
             
             if step is vna.CalStep.COMPLETE:
+                self.disable_widgets = False
                 self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration complete")
                 return
             if step is vna.CalStep.INCOMPLETE:
+                self.disable_widgets = False
                 self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration imcomplete!")
                 return
@@ -271,8 +273,12 @@ class CalDialog():
         self.top = tk.Toplevel(parent)
         self.top.title("Calibration Wizard")
         self.top.resizable(False, False)
+        self.top.protocol("WM_DELETE_WINDOW", self.destroy)
     
     def make_widgets_config(self):
+        self.parent.disable_widgets = True
+        self.parent.update_widgets();
+        
         self.config_frame = tk.Frame(self.top)
         self.config_frame.pack()
         #tk.Label(self.config_frame,text="Enter calibration parameters").pack(side=tk.TOP)
@@ -320,7 +326,7 @@ class CalDialog():
         btn_group =  tk.Frame(self.config_frame)
         btn_group.pack(side=tk.BOTTOM,fill=tk.NONE)
         tk.Button(btn_group, text="Begin calibration", command=self.begin).grid(row=1,column=1,padx=PADDING,pady=PADDING)
-        tk.Button(btn_group, text="Cancel", command=lambda: self.top.destroy()).grid(row=1,column=2,padx=PADDING,pady=PADDING)
+        tk.Button(btn_group, text="Cancel", command=self.destroy).grid(row=1,column=2,padx=PADDING,pady=PADDING)
 
     def begin(self):
         try:
@@ -346,6 +352,10 @@ class CalDialog():
         
         self.top.lift()
         
+    def destroy(self):
+        self.parent.disable_widgets = False
+        self.parent.update_widgets();
+        self.top.destroy()
 
 class SaveLoadDialog():
     # If save is true, this dialog saves the calibration
