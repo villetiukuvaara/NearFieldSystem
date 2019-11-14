@@ -380,7 +380,7 @@ class SaveLoadDialog():
         
         self.top = tk.Toplevel(self.parent)
         self.top.protocol("WM_DELETE_WINDOW", lambda: None) # Disable X button
-        self.top.title("Save File")
+        self.top.title("Save/Load File")
         self.top.resizable(False, False)
         
         if self.save:
