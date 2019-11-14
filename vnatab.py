@@ -25,7 +25,7 @@ PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
 DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f}".format(
-                start=vna.FREQ_MIN, stop=vna.FREQ_MAX, points=vna.POINTS_MAX, power=vna.POWER_MIN,
+                start=vna.FREQ_MIN/1e9, stop=vna.FREQ_MAX/1e9, points=vna.POINTS_MAX, power=vna.POWER_MIN,
                 s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
 DEFAULT_ADDRESS = 16
 
@@ -252,7 +252,7 @@ class VNATab(tk.Frame):
                 else:
                     cal_type += "without isolation"
             text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
-                    start=p.start, stop=p.stop, points=p.points, power=p.power, cal=cal_type,
+                    start=p.start/1e9, stop=p.stop/1e9, points=p.points, power=p.power, cal=cal_type,
                     s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
             self.calibration_label.config(text=text, fg="black")
             self.save_button.config(state=tk.NORMAL)
@@ -325,7 +325,7 @@ class CalDialog():
     def begin(self):
         try:
             cal_type = vna.CalType(self.cal_type.get())
-            params = vna.FreqSweepParams(float(self.entry_strings['start'].get()), float(self.entry_strings['stop'].get()),
+            params = vna.FreqSweepParams(float(self.entry_strings['start'].get())*1e9, float(self.entry_strings['stop'].get())*1e9,
             int(self.points_entry.get()), float(self.entry_strings['power'].get()), cal_type)
 
             v = params.validation_messages()
