@@ -510,7 +510,7 @@ class MeasurementPlot(tk.Frame):
         colour = 'tab:blue'
         ax2 = self.ax.twinx()
         ax2.plot(data.freq, data.phase, label='Phase',color=colour)
-        ax2.set_ylabel('Phase',color=colour)
+        ax2.set_ylabel(u'Phase (\N{DEGREE SIGN})',color=colour)
         ax2.tick_params(axis='y', labelcolor=colour)
         self.fig.tight_layout()
         self.canvas.draw()

@@ -445,53 +445,88 @@ class VNA():
         self.write(chan+";")
         return self.vna.query_binary_values("OUTPDATA",container=tuple,header_fmt="hp")
     
-    def get_stim_points_tuple(self):
+    def get_freq(self):
         '''
-        Returns a tuple with the values of frequency from the x-axis to graph.
+        Returns a numpy array with the values of frequency from the x-axis to graph.
         '''
         self.write("OUTPLIML;") #Asks for the limit test results to extract the stimulus components
         aux=[]
         x=self.read().split('\n') #Split the string for each point
+        
+        if self.dummy:
+            return np.empty(0)
+        
         for i in x:
             if(i==""):
                 break
             aux.append(float(i.split(',')[0])) #Split each string and get only the first value as a float number
-        return tuple(aux)
+        return np.asarray(aux)
     
-    def get_db_tuple(self,chan="CHAN1"):
+    def get_mag(self,chan="CHAN1"):
         '''
-        Returns a tuple with the logarithmic magnitude values on the channel specified
+        Returns a numpy array with the logarithmic magnitude values on the channel specified
         Parameters:
         chan: String specifying the channel to get the values from
         '''
+        self.write("FORM5;") #Use binary format to output data
         self.write(chan+";") #Select channel
         self.write("LOGM;") #Show logm values
         res=[]
+        
+        if self.dummy:
+            return np.empty(0)
+        
         aux=self.vna.query_binary_values("OUTPFORM;",container=tuple,header_fmt='hp') #Ask for the values from channel and format them as tuple
         for i in range(0,len(aux),2): #Only get the first value of every data pair because the other is zero
             res.append(aux[i])
-        return tuple(res)
+        return np.asarray(res)
     
-    def get_phase_tuple(self,chan="CHAN1"):
+    def get_phase(self,chan="CHAN1"):
         '''
-        Returns a tuple with the phase shift values on the channel specified
-        Parameters:
-        chan: String specifying the channel to get the values from
+        Returns a phase on given 
         '''
+        self.write("FORM5;") #Use binary format to output data
         self.write(chan+";")
         self.write("PHAS;")
         res=[]
+        
+        if self.dummy:
+            return np.empty(0)
+        
         aux=self.vna.query_binary_values("OUTPFORM;",container=tuple,header_fmt='hp') #Ask for the values from channel and format them as tuple
         for i in range(0,len(aux),2): #Only get the first value of every data pair because the other is zero
             res.append(aux[i])
-        return tuple(res)
+        return np.asarray(res)
     
     def measure(self,sparam, start, stop, points):
         if not self.connected or not self.cal_ok:
             return None
         
+        if sparam == SParam.S11:
+            chan = 'CHAN1'
+        elif sparam == SParam.S21:
+            chan = 'CHAN2'
+        elif sparam == SParam.S12:
+            chan = 'CHAN3'    
+        elif sparam == SParam.S22:
+            chan = 'CHAN4'
+        else:
+            raise Exception('Request measurement of non-existent S-param')
+        
+        freq = self.get_freq()
+        mag = self.get_mag()
+        phase = self.get_phase()
+        
         if self.dummy:
-            return self.random_data(sparam, start, stop, points)
+            freq = np.linspace(start, stop, points)
+            diff = stop - start
+            mag = -5+ 3/diff*(freq-start) + np.random.random(len(freq))*0.5
+            phase = -180 + 360/diff*(freq-start) + np.random.random(len(freq))*5
+        
+        sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
+                                       self.cal_params.cal_type, self.cal_params.isolation_cal)
+        
+        return MeasData(sparam, sweep_params, freq, mag, phase)
     
     def measure_all(self, start, stop, points):
         results = []
@@ -503,26 +538,6 @@ class VNA():
         elif self.cal_params.cal_type == CalType.CALIS221:
             results.append(self.measure(SParam.S22, start, stop, points))
         return results
-    
-    def random_data(self, sparam=SParam.S11, start=None, stop=None, points=None):
-        if start == None:
-            start = self.cal_params.start
-        if stop == None:
-            stop = self.cal_params.stop
-        if points == None:
-            points = self.cal_params.points
-        
-        freq = np.linspace(start, stop, points)
-        diff = stop - start
-        mag = -5+ 3/diff*(freq-start) + np.random.random(len(freq))*0.5
-        phase = -180 + 360/diff*(freq-start) + np.random.random(len(freq))*5
-        
-        sweep_params = self.cal_params
-        sweep_params.start = start
-        sweep_params.stop = stop
-        sweep_params.points = points
-        
-        return MeasData(sparam, sweep_params, freq, mag, phase)
     
 class MeasData():
     def __init__(self, sparam, sweep_params, freq, mag, phase):
