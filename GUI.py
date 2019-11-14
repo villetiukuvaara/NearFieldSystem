@@ -6,6 +6,7 @@ import re
 from DMC import *
 from motiontab import MotionTab
 from vnatab import VNATab
+from measuretab import MeasureTab
 import time
 import vna
 
@@ -26,7 +27,7 @@ class NearFieldGUI:                            # not a widget subbclass
         self.tabs = ttk.Notebook(self.win)
         self.motion_tab = MotionTab(self.tabs, self.dmc)
         self.vna_tab = VNATab(self.tabs, self.vna, self)
-        self.measure_tab = ttk.Frame(self.tabs)
+        self.measure_tab = MeasureTab(self.tabs, self.dmc, self.vna, self)
         self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")
         self.tabs.add(self.vna_tab, text="VNA Configuration")
@@ -38,6 +39,7 @@ class NearFieldGUI:                            # not a widget subbclass
     # This gets called when X is pressed ("WM_DELETE_WINDOW")
     def clean_up(self):
         util.dprint("Cleaning up")
+        self.measure_tab.clean_up()
         self.motion_tab.clean_up()
         self.dmc.clean_up()
         self.win.destroy()
