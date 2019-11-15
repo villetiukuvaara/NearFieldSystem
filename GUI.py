@@ -19,7 +19,7 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
         self.dmc = DMC(True)
-        self.vna = vna.VNA(True)
+        self.vna = vna.VNA(False)
         self.make_widgets()
         self.gui_ready = True
 

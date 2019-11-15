@@ -13,6 +13,7 @@ import util
 from enum import Enum
 import numpy as np
 import pickle
+import struct
 
 FREQ_MIN = 20e9 # in Hz
 FREQ_MAX = 40e9 # in Hz
@@ -46,6 +47,11 @@ class SParam(Enum):
     S12 = 'S12'
     S21 = 'S21'
     S22 = 'S22'
+    
+CHANNELS = {SParam.S11 : 'CHAN1',
+            SParam.S12 : 'CHAN2',
+            SParam.S21 : 'CHAN3',
+            SParam.S22 : 'CHAN4'}
 
 class FreqSweepParams():
     def __init__(self, start, stop, points, power, cal_type, isolation_cal=False):
@@ -142,14 +148,14 @@ class VNA():
                 self.rm=visa.ResourceManager()
                 self.vna=self.rm.open_resource('GPIB0::{}::INSTR'.format(address),resource_pyclass=MessageBasedResource)
                 self.vna.timeout=None #Avoid timing out for time consuming measurements.
+                self.connected = True
             except visa.VisaIOError:
                 self.connected = False
                 return False
         
-        
         # Configure display immediately upon connecting
         self.display_4_channels()
-        self.sweep()
+        #self.sweep()
         
         cal_data = self.get_calibration_data()
         
@@ -163,10 +169,9 @@ class VNA():
             cal_type = CalType.CALIS221
         
         if cal_type is not None:
-            print('Cal is {}'.format(cal_type))
-        
-        self.connected = True
-        return True
+            self.cal_params = FreqSweepParams(0,0,0,cal_type,False)
+            self.cal_params = self.cal_params = self.get_sweep_params()
+            self.cal_ok = True
     
     def disconnect(self):
         if self.dummy:
@@ -211,33 +216,57 @@ class VNA():
     def display_4_channels(self):
         '''Displays the 4 channels in a 2x2 grid with one slot for each.
         Assigns S11 to CHAN1, S12 to CHAN3, S21 to CHAN2, and S22 to CHAN4.'''
-        self.write("DUACON;")
-        self.write("CHAN1;AUTO;")
+        self.write("{};AUTO;".format(CHANNELS[SParam.S11]))
         self.write("S11;")
         self.write("AUXCON;")
-        self.write("CHAN2;AUTO;")
+        self.write("LOGM;")
+        self.write("{};AUTO;".format(CHANNELS[SParam.S12]))
         self.write("S21;")
         self.write("AUXCON;")
-        self.write("CHAN3;AUTO;")
+        self.write("LOGM;")
+        self.write("{};AUTO;".format(CHANNELS[SParam.S21]))
         self.write("S12;")
-        self.write("CHAN4;AUTO;")
+        self.write("LOGM;")
+        self.write("{};AUTO;".format(CHANNELS[SParam.S22]))
         self.write("S22;")
+        self.write("LOGM;")
         self.write("SPLID4;")
         self.write("OPC?;WAIT;")
 
     def get_calibration_data(self):
         data = {}
   
-        self.write("FORM5;")
+        self.write("FORM3;") # 64 bit numbers (8 bytes/number, 16 bytes per point)
+        
+        #points = int(float(self.query("POIN?;")))
+        
         for t in CalType:
             name = t.name
+            
+            # Set the channel as appropriate for the given
+            if t == CalType.CALIS111:
+                ch = CHANNELS[SParam.S11]
+            elif t == CalType.CALIS221:
+                ch = CHANNELS[SParam.S22]
+            else:
+                ch = CHANNELS[SParam.S11]
+                
+            self.write("{};".format(ch))
+            
             if(bool(int(self.query(name+"?;")))):
                 data2 = []
                 for i in range(CAL_DATA_LENGTH[t]):
                     #data2.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";"))
                     self.write("OUTPCALC{:02d};".format(i+1))
+                    
                     if not self.dummy:
-                        d = self.vna.read_binary_values("",container=tuple,header_fmt='hp')
+                        header = self.vna.read_bytes(4) # 4-byte header
+                        # big-endian, 2 bytes
+                        values = int(struct.unpack('>h', header[2:])[0]/8)
+                        d = []
+
+                        for i in range(values):
+                            d.append(self.vna.read_bytes(8))
                     else:
                         d = (1, 2, 3)
                     data2.append(d)
@@ -246,15 +275,25 @@ class VNA():
         return data
     
     def set_calibration_data(self, data):
-        self.write("FORM5;")
+        self.write("FORM3;")
         
         for key,vals in data.items():
             self.write(key.name + ";")
-            for i,v in enumerate(vals):
-                self.write(message="INPUCALC{:02d} ".format(i+1))
+            for i,data in enumerate(vals):
+                self.write("INPUCALC{:02d}".format(i+1))
+
                 if not self.dummy:
-                    self.vna.write_binary_values(message="", values=v)
+                    # Write header
+                    msg = b'#A' + struct.pack('>h', len(data)*8) + b''.join(data)
+                    self.vna.write_raw(msg)
+                    #self.vna.write_raw(b'#A')
+                    #self.vna.write_raw(struct.pack('>h', len(data)*8))
+                    #elf.vna.write_raw(b''.join(data))
+                    #for d in data:
+                    #    time.sleep(0.01)
+                    #    self.vna.write_raw(d)
                 #self.write("INPUCALC{:02d} ".format(i+1) + v)
+                self.write(";")
             
         self.write("SAVC;") #Complete coefficient transfer
         #self.write("CORRON;") #Turn on error correction
@@ -418,7 +457,7 @@ class VNA():
         '''
         Sets continuous sweep. Sets autoadjust to show the graphs on the vna and then sets single sweep to lock the updated praphs
         '''
-        self.write("CONT")
+        self.write("CONT;")
         for i in ("CHAN1","CHAN2","CHAN3","CHAN4"):
             self.write(i+";AUTO;")
         if not self.dummy:
@@ -544,3 +583,6 @@ if __name__ == "__main__":
     util.debug_messages = True
     v = VNA(False)
     v.connect(16)
+    d = v.get_calibration_data()
+    #data = d[CalType.CALIS111]
+    #v.set_calibration_data(d)

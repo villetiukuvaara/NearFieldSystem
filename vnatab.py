@@ -147,7 +147,8 @@ class VNATab(tk.Frame):
                 tk.messagebox.showerror(title="VNA Error",message="Invalid GPIB Address")
                 return
             
-            if not self.vna.connect(address):
+            self.vna.connect(address)
+            if not self.vna.connected:
                 tk.messagebox.showerror(title="VNA Error",message="Could not connect to VNA")
         else:
             self.vna.disconnect()
