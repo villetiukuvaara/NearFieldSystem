@@ -169,7 +169,7 @@ class VNA():
             cal_type = CalType.CALIS221
         
         if cal_type is not None:
-            self.cal_params = FreqSweepParams(0,0,0,cal_type,False)
+            self.cal_params = FreqSweepParams(0,0,0,0,cal_type,False)
             self.cal_params = self.cal_params = self.get_sweep_params()
             self.cal_ok = True
     
@@ -530,27 +530,17 @@ class VNA():
         if not self.connected or not self.cal_ok:
             return None
         
-        if sparam == SParam.S11:
-            chan = 'CHAN1'
-        elif sparam == SParam.S21:
-            chan = 'CHAN2'
-        elif sparam == SParam.S12:
-            chan = 'CHAN3'    
-        elif sparam == SParam.S22:
-            chan = 'CHAN4'
-        else:
-            raise Exception('Request measurement of non-existent S-param')
-        
         sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
                                        self.cal_params.cal_type, self.cal_params.isolation_cal)
+        
         self.set_sweep_params(sweep_params)
-        sweep_params = self.get_sweep_params(sweep_params)
+        sweep_params = self.get_sweep_params()
         
         self.sweep()
         
-        freq = self.get_freq(chan)
-        mag = self.get_mag(chan)
-        phase = self.get_phase(chan)
+        freq = self.get_freq()
+        mag = self.get_mag(CHANNELS[sparam])
+        phase = self.get_phase(CHANNELS[sparam])
 
         if self.dummy:
             freq = np.linspace(start, stop, points)
@@ -583,6 +573,3 @@ if __name__ == "__main__":
     util.debug_messages = True
     v = VNA(False)
     v.connect(16)
-    d = v.get_calibration_data()
-    #data = d[CalType.CALIS111]
-    #v.set_calibration_data(d)
