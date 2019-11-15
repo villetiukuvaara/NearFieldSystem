@@ -12,9 +12,10 @@ import time
 import util
 from enum import Enum
 import numpy as np
+import pickle
 
-FREQ_MIN = 20 # in GHZ
-FREQ_MAX = 60
+FREQ_MIN = 20e9 # in Hz
+FREQ_MAX = 40e9 # in Hz
 POINTS_MIN = 3 # Number of steps
 POINTS_MAX = 1601 # Number of steps
 POINTS_DEFAULT = 1601
@@ -167,7 +168,10 @@ class VNA():
         self.cal_ok = False
         
     def write(self, msg):
-        util.dprint(msg)
+        if(len(msg) < 200):
+            util.dprint(msg)
+        else:
+            util.dprint(msg[0:30] + " ...")
         if not self.dummy:
             self.vna.write(msg)
             
@@ -178,6 +182,10 @@ class VNA():
             return self.vna.read()
     
     def query(self, msg):
+        if(len(msg) < 200):
+            util.dprint(msg)
+        else:
+            util.dprint(msg[0:30] + " ...")
         if self.dummy:
             return "1"
         else:
@@ -247,13 +255,15 @@ class VNA():
         Then it creates a list with the value arrays in teh clalibration.
         Returns these two values separately.'''
         data = {}
-        self.write("FORM4;")
+        self.write("FORM5;")
         for t in CalType:
             name = t.name
             if(bool(int(self.query(name+"?;")))):
                 data2 = []
                 for i in range(CAL_DATA_LENGTH[t]):
-                    data2.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";"))
+                    #data2.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";"))
+                    d = self.vna.query_binary_values("OUTPFORM;",container=tuple,header_fmt='hp')
+                    data2.append(d)
                 data[t] = data2
         
         return data
@@ -264,12 +274,13 @@ class VNA():
         caliT: String specifying the calibration type.
         valsCalStr: List of strings containing the different arrays of calibration coefficients.
         '''
-        self.write("FORM4;")
+        self.write("FORM5;")
         
         for key,vals in data.items():
             self.write(key.name + ";")
             for i,v in enumerate(vals):
-                self.write("INPUCALC{:02d} ".format(i+1) + v)
+                self.vna.write_binary_values(message="INPUCALC{:02d} ".format(i+1), values=v)
+                #self.write("INPUCALC{:02d} ".format(i+1) + v)
             
         self.write("SAVC;") #Complete coefficient transfer
         #self.write("CORRON;") #Turn on error correction
@@ -300,8 +311,8 @@ class VNA():
         
         if cal_step == CalStep.BEGIN:
             # First, set up the VNA with the desired calibration parameters
-            self.set_start_freq("{a:.{b}f}GHz".format(a = self.cal_params.start, b = FREQ_DECIMALS))
-            self.set_stop_freq("{a:.{b}f}GHz".format(a = self.cal_params.stop, b = FREQ_DECIMALS))
+            self.set_start_freq("{a:.{b}f}GHz".format(a = self.cal_params.start/1e9, b = FREQ_DECIMALS))
+            self.set_stop_freq("{a:.{b}f}GHz".format(a = self.cal_params.stop/1e9, b = FREQ_DECIMALS))
             self.set_points("{a:d}".format(a = self.cal_params.points, b = FREQ_DECIMALS))
             self.set_power("{a:.{b}f}".format(a = self.cal_params.power, b = POWER_DECIMALS))
             
@@ -336,7 +347,7 @@ class VNA():
             if self.cal_params.cal_type == CalType.CALIS111:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
-                self.write("PG;")
+                #self.write("PG;")
                 next_step = CalStep.COMPLETE
                 self.cal_ok = True
             elif self.cal_params.cal_type == CalType.CALIFUL2:
@@ -361,7 +372,7 @@ class VNA():
             if self.cal_params.cal_type == CalType.CALIS221:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
-                self.write("PG;")
+                #self.write("PG;")
                 next_step = CalStep.COMPLETE
                 self.cal_ok = True
             elif self.cal_params.cal_type == CalType.CALIFUL2:
@@ -397,7 +408,7 @@ class VNA():
                 
             self.write("OPC?;SAV2;") #Complete the calibration
             self.read()
-            self.write("PG;")
+            #self.write("PG;")
             
             next_step = CalStep.COMPLETE
             self.cal_ok = True   
@@ -417,12 +428,12 @@ class VNA():
 
     def configure(self,sweep_params):
         self.measurement_params = sweep_params
-        self.set_start_freq("{a:.{b}f}GHz".format(a = sweep_params.start, b = FREQ_DECIMALS))
-        self.set_stop_freq("{a:.{b}f}GHz".format(a = sweep_params.stop, b = FREQ_DECIMALS))
+        self.set_start_freq("{a:.{b}f}GHz".format(a = sweep_params.start/1e9, b = FREQ_DECIMALS))
+        self.set_stop_freq("{a:.{b}f}GHz".format(a = sweep_params.stop/1e9, b = FREQ_DECIMALS))
         self.set_points("{a:d}".format(a = sweep_params.points, b = FREQ_DECIMALS))
         self.set_power("{a:.{b}f}".format(a = sweep_params.power, b = POWER_DECIMALS))
 
-        self.disp4Ch() #Display four channels
+        self.display_4_channels() #Display four channels
         self.sweep() #Update graphs
         self.write("FORM5;") #Use binary format to output data
 
@@ -517,14 +528,15 @@ class VNA():
         mag = self.get_mag()
         phase = self.get_phase()
         
+        sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
+                                       self.cal_params.cal_type, self.cal_params.isolation_cal)
+        self.configure(sweep_params)
+        
         if self.dummy:
             freq = np.linspace(start, stop, points)
             diff = stop - start
             mag = -5+ 3/diff*(freq-start) + np.random.random(len(freq))*0.5
             phase = -180 + 360/diff*(freq-start) + np.random.random(len(freq))*5
-        
-        sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
-                                       self.cal_params.cal_type, self.cal_params.isolation_cal)
         
         return MeasData(sparam, sweep_params, freq, mag, phase)
     
@@ -548,5 +560,6 @@ class MeasData():
         self.phase = phase
 
 if __name__ == "__main__":
-    v = VNA(True)
+    util.debug_messages = True
+    v = VNA(False)
     v.connect(16)
