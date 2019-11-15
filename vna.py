@@ -122,7 +122,6 @@ class VNA():
         self.cal_ok = False
         self.connected = False
         self.cal_params = None
-        self.measurement_params = None
         
         self.rm=None
         self.vna=None
@@ -138,15 +137,33 @@ class VNA():
     def connect(self, address):
         if self.dummy:
             self.connected = True
-            return True
+        else:
+            try:
+                self.rm=visa.ResourceManager()
+                self.vna=self.rm.open_resource('GPIB0::{}::INSTR'.format(address),resource_pyclass=MessageBasedResource)
+                self.vna.timeout=None #Avoid timing out for time consuming measurements.
+            except visa.VisaIOError:
+                self.connected = False
+                return False
         
-        try:
-            self.rm=visa.ResourceManager()
-            self.vna=self.rm.open_resource('GPIB0::{}::INSTR'.format(address),resource_pyclass=MessageBasedResource)
-            self.vna.timeout=None #Avoid timing out for time consuming measurements.
-        except visa.VisaIOError:
-            self.connected = False
-            return False
+        
+        # Configure display immediately upon connecting
+        self.display_4_channels()
+        self.sweep()
+        
+        cal_data = self.get_calibration_data()
+        
+        cal_type = None
+        
+        if CalType.CALIFUL2 in cal_data:
+            cal_type = CalType.CALIFUL2
+        elif CalType.CALIS111 in cal_data:
+            cal_type = CalType.CALIS111
+        elif CalType.CALIS221 in cal_data:
+            cal_type = CalType.CALIS221
+        
+        if cal_type is not None:
+            print('Cal is {}'.format(cal_type))
         
         self.connected = True
         return True
@@ -191,44 +208,6 @@ class VNA():
         else:
             return self.vna.query(msg)
     
-    def set_start_freq(self,startF="",units=""):
-        '''Sets the start frequency parameter on the VNA.
-        Returns the actual number of hertz to which the parameter in the VNA changed.
-        Parameters:
-        startF: String with a number.
-        units: String with the units in which the number was given.'''
-        self.write("STAR "+startF+" "+units+";") #Write sends the command string to the VNA
-        self.write("STAR?;") #Some commands accept the '?' to request for the state of a parameter. The answer then has to be read
-        return self.read() #Reading the buffer with the answer to the last information requested
-    
-    def set_stop_freq(self,stopF="",units=""):
-        '''Sets the stop frequency parameter on the VNA.
-        Returns the actual number of hertz to which the parameter in the VNA changed.
-        Parameters:
-        stopF: String with a number.
-        units: String with the units in which the number was given.'''
-        self.write("STOP "+stopF+" "+units+";")
-        self.write("STOP?;")
-        return self.read()
-    
-    def set_points(self,points=""):
-        '''Sets the number of points parameter on the VNA.
-        Returns the actual number of points to which the parameter in the VNA changed.
-        Parameters:
-        points: String with a number.'''
-        self.write("POIN "+points+";")
-        self.write("POIN?;")
-        return self.read()
-    
-    def set_power(self,power=""):
-        '''Sets the power parameter on the VNA.
-        Returns the actual power level in dBm to which the parameter in the VNA changed.
-        Parameters:
-        power: String with a number.'''
-        self.write("POWE "+power+";")
-        self.write("POWE?;")
-        return self.read()
-    
     def display_4_channels(self):
         '''Displays the 4 channels in a 2x2 grid with one slot for each.
         Assigns S11 to CHAN1, S12 to CHAN3, S21 to CHAN2, and S22 to CHAN4.'''
@@ -246,15 +225,9 @@ class VNA():
         self.write("SPLID4;")
         self.write("OPC?;WAIT;")
 
-    #def get_calibration_data(self, cal_type):
-    #    pass
-
     def get_calibration_data(self):
-        '''Returns the calibration type and the calibration values currently loaded on the VNA.
-        First it verifies the calibration that is loaded on the VNA.
-        Then it creates a list with the value arrays in teh clalibration.
-        Returns these two values separately.'''
         data = {}
+  
         self.write("FORM5;")
         for t in CalType:
             name = t.name
@@ -262,24 +235,25 @@ class VNA():
                 data2 = []
                 for i in range(CAL_DATA_LENGTH[t]):
                     #data2.append(self.query("OUTPCALC"+"{:02d}".format(i+1)+";"))
-                    d = self.vna.query_binary_values("OUTPFORM;",container=tuple,header_fmt='hp')
+                    self.write("OUTPCALC{:02d};".format(i+1))
+                    if not self.dummy:
+                        d = self.vna.read_binary_values("",container=tuple,header_fmt='hp')
+                    else:
+                        d = (1, 2, 3)
                     data2.append(d)
                 data[t] = data2
         
         return data
     
     def set_calibration_data(self, data):
-        '''Loads calibration data to a VNA.
-        Parameters:
-        caliT: String specifying the calibration type.
-        valsCalStr: List of strings containing the different arrays of calibration coefficients.
-        '''
         self.write("FORM5;")
         
         for key,vals in data.items():
             self.write(key.name + ";")
             for i,v in enumerate(vals):
-                self.vna.write_binary_values(message="INPUCALC{:02d} ".format(i+1), values=v)
+                self.write(message="INPUCALC{:02d} ".format(i+1))
+                if not self.dummy:
+                    self.vna.write_binary_values(message="", values=v)
                 #self.write("INPUCALC{:02d} ".format(i+1) + v)
             
         self.write("SAVC;") #Complete coefficient transfer
@@ -311,10 +285,8 @@ class VNA():
         
         if cal_step == CalStep.BEGIN:
             # First, set up the VNA with the desired calibration parameters
-            self.set_start_freq("{a:.{b}f}GHz".format(a = self.cal_params.start/1e9, b = FREQ_DECIMALS))
-            self.set_stop_freq("{a:.{b}f}GHz".format(a = self.cal_params.stop/1e9, b = FREQ_DECIMALS))
-            self.set_points("{a:d}".format(a = self.cal_params.points, b = FREQ_DECIMALS))
-            self.set_power("{a:.{b}f}".format(a = self.cal_params.power, b = POWER_DECIMALS))
+            self.set_sweep_params(self.cal_params)
+            self.cal_params = self.get_sweep_params() # Update values with actual values
             
             self.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
             if self.cal_params.cal_type == CalType.CALIS111:
@@ -426,16 +398,21 @@ class VNA():
     def get_calibration_params(self):
         return self.cal_params
 
-    def configure(self,sweep_params):
-        self.measurement_params = sweep_params
-        self.set_start_freq("{a:.{b}f}GHz".format(a = sweep_params.start/1e9, b = FREQ_DECIMALS))
-        self.set_stop_freq("{a:.{b}f}GHz".format(a = sweep_params.stop/1e9, b = FREQ_DECIMALS))
-        self.set_points("{a:d}".format(a = sweep_params.points, b = FREQ_DECIMALS))
-        self.set_power("{a:.{b}f}".format(a = sweep_params.power, b = POWER_DECIMALS))
-
-        self.display_4_channels() #Display four channels
-        self.sweep() #Update graphs
-        self.write("FORM5;") #Use binary format to output data
+    def set_sweep_params(self, sweep_params):
+        #self.measurement_params = sweep_params
+        self.write("STAR {a:.{b}f}GHz;".format(a = sweep_params.start/1e9, b = FREQ_DECIMALS))
+        self.write("STOP {a:.{b}f}GHz;".format(a = sweep_params.stop/1e9, b = FREQ_DECIMALS))
+        self.write("POIN {a:d};".format(a = sweep_params.points))
+        self.write("POWE {a:.{b}f};".format(a = sweep_params.power,  b = POWER_DECIMALS))
+    
+    def get_sweep_params(self):
+        start = float(self.query("STAR?;"))
+        stop = float(self.query("STOP?;"))
+        points = int(float(self.query("POIN?;")))
+        power = float(self.query("POWE?;"))
+        
+        return FreqSweepParams(start, stop, points, power, self.cal_params.cal_type,
+                                       self.cal_params.isolation_cal)
 
     def sweep(self):
         '''
@@ -444,7 +421,8 @@ class VNA():
         self.write("CONT")
         for i in ("CHAN1","CHAN2","CHAN3","CHAN4"):
             self.write(i+";AUTO;")
-        self.vna.query_ascii_values("OPC?;SING;")
+        if not self.dummy:
+            self.vna.query_ascii_values("OPC?;SING;")
 
     def get_data_tuple(self,chan="CHAN1"):
         '''
@@ -524,14 +502,17 @@ class VNA():
         else:
             raise Exception('Request measurement of non-existent S-param')
         
-        freq = self.get_freq()
-        mag = self.get_mag()
-        phase = self.get_phase()
-        
         sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
                                        self.cal_params.cal_type, self.cal_params.isolation_cal)
-        self.configure(sweep_params)
+        self.set_sweep_params(sweep_params)
+        sweep_params = self.get_sweep_params(sweep_params)
         
+        self.sweep()
+        
+        freq = self.get_freq(chan)
+        mag = self.get_mag(chan)
+        phase = self.get_phase(chan)
+
         if self.dummy:
             freq = np.linspace(start, stop, points)
             diff = stop - start
