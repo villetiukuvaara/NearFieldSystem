@@ -87,6 +87,7 @@ class VNATab(tk.Frame):
         tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Power (dB)").grid(row=5,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = {}
         self.entries = []
@@ -94,7 +95,7 @@ class VNATab(tk.Frame):
         self.step_labels = []
         validation_decimals = [True, True, False]
         
-        for i,pos in enumerate(['start','stop','points']):
+        for i,pos in enumerate(['start','stop','points','power']):
             self.entry_strings[pos] = tk.StringVar()
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
@@ -104,7 +105,7 @@ class VNATab(tk.Frame):
                 self.points.set(vna.POINTS_DEFAULT)
             else:
                 self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[pos], validate="key",
-                                             width=7, validatecommand=(self.register(self.validate_entry), "%P", validation_decimals[i])))
+                                             width=7, validatecommand=(self.register(self.validate_entry), "%P", True)))
                 self.entry_strings[pos].set(DEFAULT_PARAMS[i])
             self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
         
@@ -115,7 +116,17 @@ class VNATab(tk.Frame):
         self.measurement_plot.pack(side=tk.LEFT,fill=tk.BOTH)    
             
         self.update_widgets()
-        
+    
+    def get_sweep_params(self):
+        try:
+            start = float(self.entry_strings['start'].get())*1e9
+            stop = float(self.entry_strings['stop'].get())*1e9
+            points = int(self.points.get())
+            power = float(self.entry_strings['power'].get())
+            return vna.FreqSweepParams(start, stop, points, power, [])
+        except ValueError:
+            return None
+    
     def validate_entry(self, P, decimals):
         if decimals == "True":
             m = re.match("^-?([0-9]*)(\.?[0-9]*)?$", P)
@@ -192,10 +203,8 @@ class VNATab(tk.Frame):
         threading.Thread(target=self.measure_task).start()
     
     def measure_task(self):
-        start = float(self.entry_strings['start'].get())*1e9
-        stop = float(self.entry_strings['stop'].get())*1e9
-        points = int(self.points.get())
-        data = self.vna.measure_all(start, stop, points)
+        swp = self.get_sweep_params()
+        data = self.vna.measure_all(self.get_sweep_params())
         self.measurement_plot.set_data(data)
     
     def enable_entries(self, enable):
@@ -242,21 +251,24 @@ class VNATab(tk.Frame):
             self.measurement_plot.set_data(None)
             self.enable_entries(False)
         else: # Connected and calibration is ok
-            p = self.vna.get_calibration_params()
+            ct = self.vna.cal_type
             cal_type = ""
-            if p.cal_type == vna.CalType.CALIS111:
+            if ct == vna.CalType.CALIS111:
                 cal_type = "1-port (S11)"
-            elif p.cal_type == vna.CalType.CALIS221:
+            elif ct == vna.CalType.CALIS221:
                 cal_type = "1-port (S22)"
-            elif p.cal_type == vna.CalType.CALIFUL2:
+            elif ct == vna.CalType.CALIFUL2:
                 cal_type = "2-port "
-                if p.isolation_cal:
-                    cal_type += "with isolation"
-                else:
-                    cal_type += "without isolation"
-            text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
-                    start=p.start/1e9, stop=p.stop/1e9, points=p.points, power=p.power, cal=cal_type,
-                    s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
+            else:
+                cal_type = "unknown"
+                
+            if self.vna.cal_params is None:
+                text = "{} calibration present but calibration parameters are unknown.".format(text)
+            else:
+                p = self.vna.cal_params
+                text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
+                        start=p.start/1e9, stop=p.stop/1e9, points=p.points, power=p.power, cal=cal_type,
+                        s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
             self.calibration_label.config(text=text, fg="black")
             self.save_button.config(state=tk.NORMAL)
             self.load_button.config(state=tk.NORMAL)
@@ -332,8 +344,9 @@ class CalDialog():
     def begin(self):
         try:
             cal_type = vna.CalType(self.cal_type.get())
+            self.parent.vna.cal_type = cal_type
             params = vna.FreqSweepParams(float(self.entry_strings['start'].get())*1e9, float(self.entry_strings['stop'].get())*1e9,
-            int(self.points_entry.get()), float(self.entry_strings['power'].get()), cal_type)
+            int(self.points_entry.get()), float(self.entry_strings['power'].get()), [])
 
             v = params.validation_messages()
             if v is None:
@@ -349,7 +362,7 @@ class CalDialog():
                 tk.messagebox.showerror("Configuration Error", m)
             
         except ValueError:
-            tk.messagebox.showerror("Configuration Error", "Parameters are missing")
+            tk.messagebox.showerror("Configuration Error", "Parameters are missing/incorrect")
         
         self.top.lift()
         
@@ -414,12 +427,15 @@ class SaveLoadDialog():
             if self.save:
                 params = self.parent.vna.get_calibration_params()
                 data = self.parent.vna.get_calibration_data()
-                pickle.dump([params, data], open(self.filename, "wb+" ))
+                pickle.dump([self.vna.cal_type, params, data], open(self.filename, "wb+" ))
                 msg = "Calibration saved"
             else:
                 data = pickle.load(open(self.filename, "rb" ))
-                self.parent.vna.set_calibration_params(data[0])
-                self.parent.vna.set_calibration_data(data[1])
+                cal_type = data[0]
+                cal_params = data[1]
+                cal_data = data[2]
+                self.parent.vna.set_calibration_params(cal_params)
+                self.parent.vna.set_calibration_data(cal_type, cal_data)
                 msg = "Calibration loaded"
         except:
             self.info.config(width=60)
@@ -455,10 +471,10 @@ class MeasurementPlot(tk.Frame):
             self.plot_select.config(values=[])
             self.plot_select.set('')
         else:
-            sp = [d.sparam.value for d in self.data]
+            sp = [d.sweep_params.sparams[0].value for d in self.data]
             self.plot_select.config(values=sp)
             self.plot_select.set(sp[0])
-            self.current_sparam = self.data[0].sparam
+            self.current_sparam = self.data[0].sweep_params.sparams[0]
         self.update_widgets()
         
     def make_widgets(self):
@@ -506,7 +522,7 @@ class MeasurementPlot(tk.Frame):
         else:
             self.plot_select.config(state=tk.NORMAL)
             
-        data = next((d for d in self.data if d.sparam == self.current_sparam), None)
+        data = next((d for d in self.data if d.sweep_params.sparams[0] == self.current_sparam), None)
         
         if data == None:
             self.canvas.draw()

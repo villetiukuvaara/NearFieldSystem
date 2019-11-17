@@ -19,7 +19,7 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
         self.dmc = DMC(True)
-        self.vna = vna.VNA(False)
+        self.vna = vna.VNA(True)
         self.make_widgets()
         self.gui_ready = True
 
@@ -27,11 +27,11 @@ class NearFieldGUI:                            # not a widget subbclass
         self.tabs = ttk.Notebook(self.win)
         self.motion_tab = MotionTab(self.tabs, self.dmc)
         self.vna_tab = VNATab(self.tabs, self.vna, self)
-        self.measure_tab = MeasureTab(self.tabs, self.dmc, self.vna, self)
+        #self.measure_tab = MeasureTab(self.tabs, self.dmc, self.vna, self.motion_tab, self.vna_tab, self)
         self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")
         self.tabs.add(self.vna_tab, text="VNA Configuration")
-        self.tabs.add(self.measure_tab, text="Run Measurement")
+        #self.tabs.add(self.measure_tab, text="Run Measurement")
         self.tabs.add(self.results_tab, text="Results")
         self.tabs.pack(expand=True,fill=tk.BOTH)
         
@@ -39,7 +39,7 @@ class NearFieldGUI:                            # not a widget subbclass
     # This gets called when X is pressed ("WM_DELETE_WINDOW")
     def clean_up(self):
         util.dprint("Cleaning up")
-        self.measure_tab.clean_up()
+        #self.measure_tab.clean_up()
         self.motion_tab.clean_up()
         self.dmc.clean_up()
         self.win.destroy()

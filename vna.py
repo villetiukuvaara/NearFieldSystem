@@ -53,21 +53,25 @@ CHANNELS = {SParam.S11 : 'CHAN1',
             SParam.S21 : 'CHAN3',
             SParam.S22 : 'CHAN4'}
 
+# Should change this so that it has S11, S12, etc. instead of cal_type
+# Save cal type as sepearate field in vna
 class FreqSweepParams():
-    def __init__(self, start, stop, points, power, cal_type, isolation_cal=False):
+    def __init__(self, start, stop, points, power, sparams):
         self.start = start   # Start freq in GHz
         self.stop = stop    # Stop freq in GHz
         self.points = points   # Number of points
         self.power = power    # Power in dBm
-        self.cal_type = cal_type   # CalType enum
-        self.isolation_cal = isolation_cal   # Was isolation done for 2-port?
+        assert isinstance(sparams, list)
+        self.sparams = sparams
     
-#    def validate():
-#        return (self.start >= FREQ_MIN and self.stop <= FREQ_MAX
-#            and self.stop >= FREQ_MIN and self.stop <= FREQ_MAX
-#            and self.start <= self.stop
-#            and self.points >= POINTS_MIN and self.points <= POINTS_MAX
-#            and self.power >= POWER_MIN and self.power <= POWER_MAX)
+    def for_sparams(self, sp):
+        assert isinstance(sp, list)
+        return FreqSweepParams(self.start, self.stop, self.points, self.power, sp)
+    
+    def __str__(self):
+        sp = " ".join([s.value for s in self.sparams])
+        return "<FreqSweepParams start:{:.3E} stop:{:.3E} points:{:d} power:{:.2f} sp: [{}]".format(
+                self.start, self.stop, self.points, self.power, sp)
     
     def validation_messages(self):
         errors = []
@@ -127,6 +131,7 @@ class VNA():
         self.dummy =  dummy
         self.cal_ok = False
         self.connected = False
+        self.cal_type = None
         self.cal_params = None
         
         self.rm=None
@@ -159,19 +164,15 @@ class VNA():
         
         cal_data = self.get_calibration_data()
         
-        cal_type = None
+        self.cal_type = None
+        self.cal_params = None
         
         if CalType.CALIFUL2 in cal_data:
-            cal_type = CalType.CALIFUL2
+            self.cal_type = CalType.CALIFUL2
         elif CalType.CALIS111 in cal_data:
-            cal_type = CalType.CALIS111
+            self.cal_type = CalType.CALIS111
         elif CalType.CALIS221 in cal_data:
-            cal_type = CalType.CALIS221
-        
-        if cal_type is not None:
-            self.cal_params = FreqSweepParams(0,0,0,0,cal_type,False)
-            self.cal_params = self.cal_params = self.get_sweep_params()
-            self.cal_ok = True
+            self.cal_type = CalType.CALIS221
     
     def disconnect(self):
         if self.dummy:
@@ -186,8 +187,10 @@ class VNA():
                 pass
             self.vna = None
             self.rm = None
+        
         self.connected = False
         self.cal_ok = False
+        self.cal_params = None
         
     def write(self, msg):
         if(len(msg) < 200):
@@ -274,8 +277,9 @@ class VNA():
         
         return data
     
-    def set_calibration_data(self, data):
+    def set_calibration_data(self, cal_type, data):
         self.write("FORM3;")
+        assert isinstance(cal_type, CalType)
         
         for key,vals in data.items():
             self.write(key.name + ";")
@@ -299,20 +303,10 @@ class VNA():
         #self.write("CORRON;") #Turn on error correction
         self.write("SING;") #Single sweep
         self.cal_ok = True
-        return
-    
-        calt={"CALIRESP":1,"CALIRAI":2,"CALIS111":3,"CALIS221":3,"CALIFUL2":12}
-        
-        self.write(caliT+";")
-        for i in range(len(valsCalStr)):
-            self.write("INPUCALC"+"{:02d} ".format(i+1)+valsCalStr[i]) #Formmating to ask for the correct data array
-        self.write("SAVC;") #Complete coefficient transfer
-        #self.write("CORRON;") #Turn on error correction
-        self.write("SING;") #Single sweep
 
     # Performs
     def calibrate(self, cal_step, option):
-        time.sleep(0.5)
+        assert isinstance(self.cal_params, FreqSweepParams)
         self.cal_ok = False
         util.dprint('Call cal step {} with option={}'.format(cal_step, option))
         
@@ -328,13 +322,13 @@ class VNA():
             self.cal_params = self.get_sweep_params() # Update values with actual values
             
             self.write("CALK35MD;") #This can either be CALK35MD or CALK24MM depending on the kit to use.
-            if self.cal_params.cal_type == CalType.CALIS111:
+            if self.cal_type == CalType.CALIS111:
                 self.write("CALIS111;")
                 next_step = CalStep.OPEN_P1
-            elif self.cal_params.cal_type == CalType.CALIS221:
+            elif self.cal_type == CalType.CALIS221:
                 self.write("CALIS221;")
                 next_step = CalStep.OPEN_P2
-            elif self.cal_params.cal_type == CalType.CALIFUL2:
+            elif self.cal_type == CalType.CALIFUL2:
                 self.write("CALIFUL2;")
                 self.write("REFL;")
                 next_step = CalStep.OPEN_P1
@@ -355,13 +349,14 @@ class VNA():
             self.write("OPC?;STANA;") #Choose the first standard (A)
             self.read()
             self.write("DONE;")
-            if self.cal_params.cal_type == CalType.CALIS111:
+            if self.cal_type == CalType.CALIS111:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
                 #self.write("PG;")
                 next_step = CalStep.COMPLETE
+                self.cal_type = CalType.CALIS111
                 self.cal_ok = True
-            elif self.cal_params.cal_type == CalType.CALIFUL2:
+            elif self.cal_type == CalType.CALIFUL2:
                 next_step = CalStep.OPEN_P2
             else:
                 raise VNAError("Invalid calibration type/step")
@@ -380,13 +375,14 @@ class VNA():
             self.write("OPC?;STANA;") #Choose the first standard (A)
             self.read()
             self.write("DONE;")
-            if self.cal_params.cal_type == CalType.CALIS221:
+            if self.cal_type == CalType.CALIS221:
                 self.write("OPC?;SAV1;") #Completes the calibration
                 self.read()
                 #self.write("PG;")
                 next_step = CalStep.COMPLETE
+                self.cal_type = CalType.CALIS221
                 self.cal_ok = True
-            elif self.cal_params.cal_type == CalType.CALIFUL2:
+            elif self.cal_type == CalType.CALIFUL2:
                 next_step = CalStep.THRU
             else:
                 raise VNAError("Invalid calibration type/step")
@@ -404,8 +400,7 @@ class VNA():
             self.write("TRAD;") #End of transmission calibration
             next_step = CalStep.ISOLATION
         elif cal_step == CalStep.ISOLATION:
-            self.cal_params.isolation_cal = option
-            if self.cal_params.isolation_cal:
+            if option:
                 self.write("ISOL;") #Starts isolation calibration
                 self.write("AVERFACT10;") #Sets average factor of 10
                 self.write("AVEROON;") #Turns on averaging
@@ -422,6 +417,7 @@ class VNA():
             #self.write("PG;")
             
             next_step = CalStep.COMPLETE
+            self.cal_type = CalType.CALIFUL2
             self.cal_ok = True   
         else:
             raise VNAError('Invalid CalStep')
@@ -430,8 +426,8 @@ class VNA():
             
        
     def set_calibration_params(self, params):
+        assert isinstance(params, FreqSweepParams)
         self.cal_params = params
-        self.measurement_params = params
         self.cal_ok = False
     
     def get_calibration_params(self):
@@ -450,8 +446,10 @@ class VNA():
         points = int(float(self.query("POIN?;")))
         power = float(self.query("POWE?;"))
         
-        return FreqSweepParams(start, stop, points, power, self.cal_params.cal_type,
-                                       self.cal_params.isolation_cal)
+        if self.dummy and isinstance(self.cal_params, FreqSweepParams):
+            return self.cal_params
+        
+        return FreqSweepParams(start, stop, points, power, [])
 
     def sweep(self):
         '''
@@ -463,16 +461,6 @@ class VNA():
         if not self.dummy:
             self.vna.query_ascii_values("OPC?;SING;")
 
-    def get_data_tuple(self,chan="CHAN1"):
-        '''
-        Gets the data from the specified channel and returns it as a tuple.
-        Parameters:
-        chan: Channel from which the data is requested. If none given, gets the data from CHAN1
-        '''
-        self.write("FORM5;")
-        self.write(chan+";")
-        return self.vna.query_binary_values("OUTPDATA",container=tuple,header_fmt="hp")
-    
     def get_freq(self):
         '''
         Returns a numpy array with the values of frequency from the x-axis to graph.
@@ -526,44 +514,52 @@ class VNA():
             res.append(aux[i])
         return np.asarray(res)
     
-    def measure(self,sparam, start, stop, points):
+    def measure(self,sweep_params):
+        assert isinstance(sweep_params, FreqSweepParams)
+        
         if not self.connected or not self.cal_ok:
             return None
-        
-        sweep_params = FreqSweepParams(start, stop, points, self.cal_params.power,
-                                       self.cal_params.cal_type, self.cal_params.isolation_cal)
-        
+
         self.set_sweep_params(sweep_params)
-        sweep_params = self.get_sweep_params()
+        if not self.dummy:
+            sweep_params = self.get_sweep_params()
         
         self.sweep()
-        
         freq = self.get_freq()
-        mag = self.get_mag(CHANNELS[sparam])
-        phase = self.get_phase(CHANNELS[sparam])
-
-        if self.dummy:
-            freq = np.linspace(start, stop, points)
-            diff = stop - start
-            mag = -5+ 3/diff*(freq-start) + np.random.random(len(freq))*0.5
-            phase = -180 + 360/diff*(freq-start) + np.random.random(len(freq))*5
         
-        return MeasData(sparam, sweep_params, freq, mag, phase)
+        if self.dummy:
+            freq = np.linspace(sweep_params.start, sweep_params.stop, sweep_params.points)
+        
+        data = []
+        
+        for sp in sweep_params.sparams:
+            mag = self.get_mag(CHANNELS[sp])
+            phase = self.get_phase(CHANNELS[sp])
+            
+            if self.dummy:
+                diff = max(freq) - min(freq)
+                mag = -5+ 3/diff*(freq-sweep_params.start) + np.random.random(len(freq))*0.5
+                phase = -180 + 360/diff*(freq-sweep_params.start) + np.random.random(len(freq))*5
+            
+            data.append(MeasData(sweep_params.for_sparams([sp]), freq, mag, phase))
+        
+        return data
     
-    def measure_all(self, start, stop, points):
-        results = []
-        if self.cal_params.cal_type == CalType.CALIFUL2:
-            for sp in SParam:
-                results.append(self.measure(sp, start, stop, points))
-        elif self.cal_params.cal_type == CalType.CALIS111:
-            results.append(self.measure(SParam.S11, start, stop, points))
-        elif self.cal_params.cal_type == CalType.CALIS221:
-            results.append(self.measure(SParam.S22, start, stop, points))
-        return results
+    def measure_all(self, sweep_params):
+        assert isinstance(sweep_params, FreqSweepParams)
+        
+        if self.cal_type == CalType.CALIFUL2:
+            sweep_params = sweep_params.for_sparams([sp for sp in SParam])
+        elif self.cal_type == CalType.CALIS111:
+            sweep_params = sweep_params.for_sparams([SParam.S11])
+        elif self.cal_type == CalType.CALIS221:
+            sweep_params = sweep_params.for_sparams([SParam.S22])
+            
+        return self.measure(sweep_params)
     
 class MeasData():
-    def __init__(self, sparam, sweep_params, freq, mag, phase):
-        self.sparam = sparam
+    def __init__(self, sweep_params, freq, mag, phase):
+        assert isinstance(sweep_params, FreqSweepParams)
         self.sweep_params = sweep_params
         self.freq = freq
         self.mag = mag
