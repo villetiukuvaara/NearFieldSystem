@@ -8,6 +8,7 @@ import threading
 import time
 import queue
 import traceback
+import numpy as np
 
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
@@ -84,6 +85,36 @@ class StopCode(Enum):
     RUNNING_VECTOR_SEQ = 100
     STOP_VECTOR_SEQ = 101
     NONE = -1
+    
+class SpatialSweepParams():
+    # Params should be a 3 element list (start, stop, points) for each of the axes
+    def __init__(self, params):
+        assert isinstance(params, list) and len(params) == 3
+        
+        self.params = params
+        pos = []
+        
+        for i in params:
+            assert isinstance(i, list) and len(i) == 3
+            for j in i:
+                assert isinstance(j, int) or isinstance(j, float)
+            
+            assert(i[1] >= i[0]) # stop > start
+            assert(i[2] > 0) # Positive number of points
+            
+            pos.append(np.linspace(i[0], i[1], i[2]))
+                
+        mgrid  = np.meshgrid(pos[0], pos[1], pos[2], sparse=False, indexing='ij')
+        self.grid = [g.flatten('F') for g in mgrid]
+    
+    def get_num_points(self):
+        return len(self.grid[0])
+    
+    # Returns the nth coordiante
+    # Sweep X first, then Y, then Z
+    def get_coordinate(self, n):
+        return[pos[n] for pos in self.grid]
+            
     
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
@@ -647,6 +678,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(False)
+    d = DMC(True)
     d.connect(DEFAULT_IP)
     d.stop()

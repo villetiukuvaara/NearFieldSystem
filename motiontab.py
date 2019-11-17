@@ -172,15 +172,6 @@ class MotionTab(tk.Frame):
                              width=10,
                              validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
                 self.entries[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
-        
-#    def change_region_type(self):
-#        for key,val in MotionTab.REGION_TYPE.items():
-#            if self.region_type.get() == key:
-#                self.steps_label.config(text=val)
-#                
-#        if self.region_type.get() == 'step':
-#             for ax_n, ax in enumerate(AXES):
-#                 self.entry_strings[(ax, 'step')].set('1')
             
     def update_steps(self):
         for ax_n, ax in enumerate(DMC.AXES):
@@ -240,6 +231,10 @@ class MotionTab(tk.Frame):
         p.append(float(self.entry_strings[(axis, 'stop')].get()))
         p.append(int(self.entry_strings[(axis, 'points')].get()))
         return p
+    
+    def get_sweep_params(self):
+        p = [self.get_region(p) for p in range(3)]
+        return DMC.SpatialSweepParams(p)
     
     def enable_joystick(self, enable):
         if enable:
