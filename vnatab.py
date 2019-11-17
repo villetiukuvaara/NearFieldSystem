@@ -538,14 +538,14 @@ class MeasurementPlot(tk.Frame):
             return
         
         colour = 'tab:red'
-        self.ax.plot(data.freq, data.mag, 'r-',label='Magnitude',color=colour)
-        self.ax.set_xlabel('Frequency (Hz)')
+        self.ax.plot(data.freq/1e9, data.mag, 'r-',label='Magnitude',color=colour)
+        self.ax.set_xlabel('Frequency (GHz)')
         self.ax.set_ylabel('Magnitude (dB)',color=colour)
         self.ax.tick_params(axis='y', labelcolor=colour)
         
         colour = 'tab:blue'
         ax2 = self.ax.twinx()
-        ax2.plot(data.freq, data.phase, label='Phase',color=colour)
+        ax2.plot(data.freq/1e9, data.phase, label='Phase',color=colour)
         ax2.set_ylabel(u'Phase (\N{DEGREE SIGN})',color=colour)
         ax2.tick_params(axis='y', labelcolor=colour)
         self.fig.tight_layout()
