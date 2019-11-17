@@ -179,6 +179,16 @@ class VNATab(tk.Frame):
             step = self.next_cal_step
             
             if step is vna.CalStep.COMPLETE:
+                cp = self.vna.get_calibration_params()
+                params = "{start:.{s1}f} {stop:.{s1}f} {power:.{s2}f}".format(
+                start=cp.start/1e9, stop=cp.stop/1e9, power=cp.power,
+                s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
+                
+                self.entry_strings['start'].set(params[0])
+                self.entry_strings['stop'].set(params[1])
+                self.entry_strings['power'].set(params[2])
+                self.points.set(cp.points)
+
                 self.disable_widgets = False
                 self.update_widgets()
                 tk.messagebox.showinfo("Calibration Wizard", "Calibration complete")
@@ -203,7 +213,6 @@ class VNATab(tk.Frame):
         threading.Thread(target=self.measure_task).start()
     
     def measure_task(self):
-        swp = self.get_sweep_params()
         data = self.vna.measure_all(self.get_sweep_params())
         self.measurement_plot.set_data(data)
     
