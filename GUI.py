@@ -28,11 +28,9 @@ class NearFieldGUI:                            # not a widget subbclass
         self.motion_tab = MotionTab(self.tabs, self.dmc)
         self.vna_tab = VNATab(self.tabs, self.vna, self)
         #self.measure_tab = MeasureTab(self.tabs, self.dmc, self.vna, self.motion_tab, self.vna_tab, self)
-        self.results_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.motion_tab, text="Spatial Configuration")
         self.tabs.add(self.vna_tab, text="VNA Configuration")
         #self.tabs.add(self.measure_tab, text="Run Measurement")
-        self.tabs.add(self.results_tab, text="Results")
         self.tabs.pack(expand=True,fill=tk.BOTH)
         
     # Close resources and clean up when exiting

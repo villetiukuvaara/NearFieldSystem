@@ -123,8 +123,12 @@ class VNATab(tk.Frame):
             stop = float(self.entry_strings['stop'].get())*1e9
             points = int(self.points.get())
             power = float(self.entry_strings['power'].get())
-            return vna.FreqSweepParams(start, stop, points, power, [])
         except ValueError:
+            return None
+        
+        try:
+            return vna.FreqSweepParams(start, stop, points, power, [])
+        except AssertionError:
             return None
     
     def validate_entry(self, P, decimals):
@@ -210,10 +214,19 @@ class VNATab(tk.Frame):
         self.cal_step_done = True
     
     def measure_btn_callback(self):
-        threading.Thread(target=self.measure_task).start()
+        p = self.get_sweep_params()
+        if p is None:
+            tk.messagebox.showerror(message="Please check sweep parameters.")
+            return
+            
+        msgs = p.validation_messages()
+        if msgs is not None:
+            tk.messagebox.showerror(message="Please fix sweep parameters.\n\n" + '\n'.join(msgs))
+        else:
+            threading.Thread(target=lambda: self.measure_task(p)).start()
     
-    def measure_task(self):
-        data = self.vna.measure_all(self.get_sweep_params())
+    def measure_task(self, params):
+        data = self.vna.measure_all(params)
         self.measurement_plot.set_data(data)
     
     def enable_entries(self, enable):

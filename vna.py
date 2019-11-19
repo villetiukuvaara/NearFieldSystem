@@ -76,11 +76,11 @@ class FreqSweepParams():
     def validation_messages(self):
         errors = []
         if self.start < FREQ_MIN or self.start > FREQ_MAX:
-            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN, FREQ_MAX));
+            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN/1e9, FREQ_MAX/1e9));
         if self.stop < FREQ_MIN or self.stop > FREQ_MAX:
-            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN, FREQ_MAX));
-        if self.start > self.stop:
-            errors.append("Start frequency cannot be greater than stop frequency");
+            errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN/1e9, FREQ_MAX/1e9));
+        if self.start >= self.stop:
+            errors.append("Stop frequency should be greater than start frequency");
         if self.points < POINTS_MIN or self.points > POINTS_MAX:
             errors.append("Number of points should be from {} to {}".format(POINTS_MIN, POINTS_MAX));
         if self.power < POWER_MIN or self.power > POWER_MAX:
