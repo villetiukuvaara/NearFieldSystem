@@ -283,26 +283,23 @@ class VNA():
         return data
     
     def set_calibration_data(self, cal_type, data):
+        assert isinstance(self.cal_params, FreqSweepParams)
+        
+        self.set_sweep_params(self.cal_params)
+        
         self.write("FORM3;")
         assert isinstance(cal_type, CalType)
         
         for key,vals in data.items():
             self.write(key.name + ";")
             for i,data in enumerate(vals):
-                self.write("INPUCALC{:02d}".format(i+1))
-
-                if not self.dummy:
-                    # Write header
+                if self.dummy:
+                    self.write("INPUCALC{:02d}<data>;".format(i+1))
+                else:
+                    self.write("INPUCALC{:02d}".format(i+1))
                     msg = b'#A' + struct.pack('>h', len(data)*8) + b''.join(data)
                     self.vna.write_raw(msg)
-                    #self.vna.write_raw(b'#A')
-                    #self.vna.write_raw(struct.pack('>h', len(data)*8))
-                    #elf.vna.write_raw(b''.join(data))
-                    #for d in data:
-                    #    time.sleep(0.01)
-                    #    self.vna.write_raw(d)
-                #self.write("INPUCALC{:02d} ".format(i+1) + v)
-                self.write(";")
+                    self.write(";")
             
         self.write("SAVC;") #Complete coefficient transfer
         #self.write("CORRON;") #Turn on error correction
