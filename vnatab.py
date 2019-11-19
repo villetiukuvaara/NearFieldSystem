@@ -163,14 +163,20 @@ class VNATab(tk.Frame):
             except ValueError:
                 tk.messagebox.showerror(title="VNA Error",message="Invalid GPIB Address")
                 return
-            
-            self.vna.connect(address)
-            if not self.vna.connected:
-                tk.messagebox.showerror(title="VNA Error",message="Could not connect to VNA")
+            threading.Thread(target=lambda: self.connect_task(address)).start()
         else:
             self.vna.disconnect()
-        self.update_widgets()
+            self.update_widgets()
+    
+    def connect_task(self, address):
+        self.config(cursor="wait")
+        self.vna.connect(address)
+        if not self.vna.connected:
+            tk.messagebox.showerror(title="VNA Error",message="Could not connect to VNA")
+        self.config(cursor="")
         
+        self.update_widgets()
+    
     def save_btn_callback(self):
         SaveLoadDialog(self, True).begin()
     
@@ -287,15 +293,16 @@ class VNATab(tk.Frame):
                 cal_type = "unknown"
                 
             if self.vna.cal_params is None:
-                text = "{} calibration present but calibration parameters are unknown.".format(cal_type)
+                text = "{} calibration present\nbut calibration parameters \nare unknown.".format(cal_type)
+                self.save_button.config(state=tk.DISABLED)
             else:
                 p = self.vna.cal_params
                 text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
                         start=p.start/1e9, stop=p.stop/1e9, points=p.points, power=p.power, cal=cal_type,
                         s1=FREQ_DECIMALS,s2=POWER_DECIMALS)
-            self.calibration_label.config(text=text, fg="black")
-            self.save_button.config(state=tk.NORMAL)
+                self.save_button.config(state=tk.NORMAL)
             self.load_button.config(state=tk.NORMAL)
+            self.calibration_label.config(text=text, fg="black")
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
@@ -451,7 +458,7 @@ class SaveLoadDialog():
             if self.save:
                 params = self.parent.vna.get_calibration_params()
                 data = self.parent.vna.get_calibration_data()
-                pickle.dump([self.vna.cal_type, params, data], open(self.filename, "wb+" ))
+                pickle.dump([self.parent.vna.cal_type, params, data], open(self.filename, "wb+" ))
                 msg = "Calibration saved"
             else:
                 data = pickle.load(open(self.filename, "rb" ))

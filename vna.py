@@ -169,10 +169,13 @@ class VNA():
         
         if CalType.CALIFUL2 in cal_data:
             self.cal_type = CalType.CALIFUL2
+            self.cal_ok = True
         elif CalType.CALIS111 in cal_data:
             self.cal_type = CalType.CALIS111
+            self.cal_ok = True
         elif CalType.CALIS221 in cal_data:
             self.cal_type = CalType.CALIS221
+            self.cal_ok = True
     
     def disconnect(self):
         if self.dummy:
@@ -521,8 +524,8 @@ class VNA():
             return None
 
         self.set_sweep_params(sweep_params)
-        if not self.dummy:
-            sweep_params = self.get_sweep_params()
+        #if not self.dummy:
+        #    sweep_params_read = self.get_sweep_params()
         
         self.sweep()
         freq = self.get_freq()
