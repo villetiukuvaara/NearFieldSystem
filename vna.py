@@ -154,6 +154,7 @@ class VNA():
                 self.vna=self.rm.open_resource('GPIB0::{}::INSTR'.format(address),resource_pyclass=MessageBasedResource)
                 self.vna.timeout=None #Avoid timing out for time consuming measurements.
                 self.connected = True
+                util.dprint("Opened connection to VNA")
             except visa.VisaIOError:
                 self.connected = False
                 return False
@@ -222,6 +223,9 @@ class VNA():
     def display_4_channels(self):
         '''Displays the 4 channels in a 2x2 grid with one slot for each.
         Assigns S11 to CHAN1, S12 to CHAN3, S21 to CHAN2, and S22 to CHAN4.'''
+        self.write("DUACON;")
+        self.write("SPLID4;")
+        self.write("OPC?;WAIT;")
         self.write("{};AUTO;".format(CHANNELS[SParam.S11]))
         self.write("S11;")
         self.write("AUXCON;")
@@ -236,8 +240,6 @@ class VNA():
         self.write("{};AUTO;".format(CHANNELS[SParam.S22]))
         self.write("S22;")
         self.write("LOGM;")
-        self.write("SPLID4;")
-        self.write("OPC?;WAIT;")
 
     def get_calibration_data(self):
         data = {}
@@ -571,4 +573,4 @@ class MeasData():
 if __name__ == "__main__":
     util.debug_messages = True
     v = VNA(False)
-    v.connect(16)
+    #v.connect(16)
