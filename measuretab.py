@@ -14,6 +14,8 @@ import os
 import time
 import pickle
 import traceback
+from motiontab import MotionTab
+from vnatab import VNATab
 
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -24,6 +26,19 @@ SLEEP = 100
 PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
+
+class MeasurementParams():
+    def __init__(freq_sweep, points):
+        assert isinstance(freq_sweep, vna.FreqSweepParams)
+        self.freq_sweep = freq_sweep
+        self.points
+    
+#    @classmethod
+#    def from_gui(cls, vna_tab, motion_tab):
+#        assert isinstance(vna_tab, VNATab)
+#        assert isinstance(motion_tab, MotionTab)
+#        
+#        fs = vna_tab.vna.
 
 class Status(Enum):
     NOT_READY = 0
@@ -41,13 +56,15 @@ class Measurement():
         self.meas = meas
 
 class MeasureTab(tk.Frame):
-    def __init__(self, parent, dmc_obj, vna_obj, top):
+    def __init__(self, parent, dmc_obj, vna_obj, motion_tab, vna_tab, top):
         self.top = top
         self.status = Status.NOT_READY
         self.disable_widgets = False
         tk.Frame.__init__(self, parent)             # do superclass init
         self.vna = vna_obj
         self.dmc = dmc_obj
+        self.vna_tab = vna_tab
+        self.motion_tab = motion_tab
         self.pack()
         self.make_widgets()                      # attach widgets to self
         self.task = None
@@ -70,7 +87,7 @@ class MeasureTab(tk.Frame):
         run_group = tk.LabelFrame(left_group, text="Run measurement")
         run_group.pack(side=tk.TOP)
         
-        self.begin_button = tk.Button(run_group, text="Run")
+        self.begin_button = tk.Button(run_group, text="Run",command=self.begin_btn_callback)
         self.begin_button.grid(row=1,column=1,padx=PADDING,pady=PADDING)
         self.pause_button = tk.Button(run_group, text="Pause")
         self.pause_button.grid(row=1,column=2,padx=PADDING,pady=PADDING)
@@ -89,6 +106,8 @@ class MeasureTab(tk.Frame):
                                           orient=tk.HORIZONTAL,
                                           variable=self.progress_val)
         self.progress_bar.pack(side=tk.TOP)
+        
+        self.bind('<Visibility>', lambda e: self.update_widgets())
 
         self.update_widgets()
         
@@ -113,6 +132,21 @@ class MeasureTab(tk.Frame):
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.NORMAL)
+    
+    def begin_btn_callback(self):
+        freq_sweep = self.vna_tab.get_sweep_params()
+        if freq_sweep is None:
+            tk.messagebox.showerror(title="",message="Please check VNA sweep configuration.")
+            return
+        
+        spatial_sweep = self.motion_tab.get_sweep_params()
+        if spatial_sweep is None:
+            tk.messagebox.showerror(title="",message="Please check spatial sweep configuration.")
+            return
+        
+        util.dprint("Begin measurement")
+        
+        
     
     def measurement_task(self):
         util.dprint('Started measurement task {}'.format(threading.current_thread()))

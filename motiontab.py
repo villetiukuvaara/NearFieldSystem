@@ -235,7 +235,7 @@ class MotionTab(tk.Frame):
             return None
     
     def get_sweep_params(self):
-        p = [self.get_region(p) for p in range(3)]
+        p = [self.get_region(p) for p in DMC.AXES]
         if p is None:
             return None
         else:

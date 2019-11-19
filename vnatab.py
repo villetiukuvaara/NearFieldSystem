@@ -113,7 +113,9 @@ class VNATab(tk.Frame):
         self.measure_btn.pack(side=tk.TOP)
         
         self.measurement_plot = MeasurementPlot(self,"Title")
-        self.measurement_plot.pack(side=tk.LEFT,fill=tk.BOTH)    
+        self.measurement_plot.pack(side=tk.LEFT,fill=tk.BOTH)
+        
+        self.bind('<Visibility>', lambda e: self.update_widgets())
             
         self.update_widgets()
     
@@ -285,7 +287,7 @@ class VNATab(tk.Frame):
                 cal_type = "unknown"
                 
             if self.vna.cal_params is None:
-                text = "{} calibration present but calibration parameters are unknown.".format(text)
+                text = "{} calibration present but calibration parameters are unknown.".format(cal_type)
             else:
                 p = self.vna.cal_params
                 text = "Start: {start:.{s1}f} GHz\nStop: {stop:.{s1}f} GHz\nPoints: {points:.0f}\n Power: {power:.{s2}f} dBm\n Calibration: {cal}".format(
