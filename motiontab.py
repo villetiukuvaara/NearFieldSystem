@@ -45,7 +45,7 @@ class MotionTab(tk.Frame):
         
     def make_widgets(self):
         position_group = tk.LabelFrame(self, text="Jog Axes")
-        position_group.pack(side=tk.LEFT,fill=tk.BOTH,padx=5,pady=5,ipadx=5,ipady=5)
+        position_group.pack(side=tk.LEFT,fill=tk.X,padx=5,pady=5,ipadx=5,ipady=5)
         move_group = tk.Frame(position_group)
         move_group.pack(side=tk.TOP)
         
@@ -86,7 +86,7 @@ class MotionTab(tk.Frame):
         
         # Label frame for starting calibration of CNC frame
         dmc_group = tk.LabelFrame(self, text="Motor Controller")
-        dmc_group.pack(fill=tk.BOTH,expand=1,padx=5,pady=5,ipadx=5,ipady=5)
+        dmc_group.pack(side=tk.TOP,fill=tk.X,expand=1,padx=5,pady=5,ipadx=5,ipady=5)
         #dmc_group_left = tk.Frame(dmc_group)
         #dmc_group_left.pack(side=tk.LEFT)
         ip_add = tk.Frame(dmc_group)
@@ -119,7 +119,7 @@ class MotionTab(tk.Frame):
         
         # Label frame for configuring measurement region
         config_region_group = tk.LabelFrame(self, text="Configure Measurement Region");
-        config_region_group.pack(fill=tk.BOTH,expand=tk.YES,side=tk.LEFT,padx=5,pady=5,ipadx=5,ipady=5)
+        config_region_group.pack(fill=tk.X,expand=tk.YES,side=tk.TOP,padx=5,pady=5,ipadx=5,ipady=5)
         
         config_type_group = tk.Frame(config_region_group)
         config_type_group.pack(side=tk.TOP)
@@ -146,10 +146,10 @@ class MotionTab(tk.Frame):
         config_vals_group.pack(side=tk.BOTTOM);
         
         # Labels for start, stop, step rows
-        tk.Label(config_vals_group,text="Start").grid(row=2,column=1)
-        tk.Label(config_vals_group,text="Stop").grid(row=3,column=1)
+        tk.Label(config_vals_group,text="Start (cm)").grid(row=2,column=1)
+        tk.Label(config_vals_group,text="Stop (cm)").grid(row=3,column=1)
         tk.Label(config_vals_group,text="Number of points").grid(row=4,column=1)
-        tk.Label(config_vals_group,text="Step").grid(row=5,column=1)
+        tk.Label(config_vals_group,text="Step (cm)").grid(row=5,column=1)
         
         self.entry_strings = {}
         self.entries = {}
@@ -172,16 +172,14 @@ class MotionTab(tk.Frame):
                              width=10,
                              validatecommand=(self.register(self.validate_entry), "%P", ax, pos) )
                 self.entries[(ax, pos)].grid(row=pos_n+2,column=ax_n+2)
+                self.entries[(ax, pos)].bind('<FocusOut>',lambda e: self.update_steps())
             
     def update_steps(self):
         for ax_n, ax in enumerate(DMC.AXES):
-            try:
-                p = self.get_region(ax)
-            except ValueError:
+            p = self.get_region(ax)
+            if p is None:
                 self.step_labels[ax_n].config(text='-')
-                return
-                
-            if p[1] is p[0] or p[2] is 1:
+            elif p[0] == p[1] or p[2] < 2:
                 self.step_labels[ax_n].config(text='-')
             else:
                 #self.step_labels[ax_n].config(text='yes')
@@ -213,7 +211,8 @@ class MotionTab(tk.Frame):
             except ValueError:
                 return False
         if self.gui_ready:
-           self.update_steps()
+            # Ugly way to make the step size update AFTER this entry has updated...
+            self.after(100,self.update_steps)
         return True
     
     def validate_num(self, P):
@@ -226,15 +225,21 @@ class MotionTab(tk.Frame):
     
     # Returns (start, stop, n_points)
     def get_region(self, axis):
-        p = []
-        p.append(float(self.entry_strings[(axis, 'start')].get()))
-        p.append(float(self.entry_strings[(axis, 'stop')].get()))
-        p.append(int(self.entry_strings[(axis, 'points')].get()))
-        return p
+        try:
+            p = []
+            p.append(float(self.entry_strings[(axis, 'start')].get()))
+            p.append(float(self.entry_strings[(axis, 'stop')].get()))
+            p.append(int(self.entry_strings[(axis, 'points')].get()))
+            return p
+        except ValueError:
+            return None
     
     def get_sweep_params(self):
         p = [self.get_region(p) for p in range(3)]
-        return DMC.SpatialSweepParams(p)
+        if p is None:
+            return None
+        else:
+            return DMC.SpatialSweepParams(p)
     
     def enable_joystick(self, enable):
         if enable:
