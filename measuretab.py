@@ -95,10 +95,10 @@ class MeasureTab(tk.Frame):
     def make_widgets(self):
         # Label frame for starting calibration
         left_group = tk.Frame(self)
-        left_group.pack(side=tk.LEFT)
+        left_group.pack(side=tk.LEFT,fill=tk.X,expand=tk.YES)
         
         run_group = tk.LabelFrame(left_group, text="Run measurement")
-        run_group.pack(side=tk.TOP)
+        run_group.pack(side=tk.TOP,fill=tk.X,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         
         self.begin_button = tk.Button(run_group, text="Run",command=self.begin_btn_callback)
         self.begin_button.grid(row=1,column=1,padx=PADDING,pady=PADDING)
@@ -108,9 +108,9 @@ class MeasureTab(tk.Frame):
         self.reset_button.grid(row=1,column=3,padx=PADDING,pady=PADDING)
         
         info_group = tk.LabelFrame(left_group, text="Info")
-        info_group.pack(side=tk.TOP)
+        info_group.pack(side=tk.TOP,fill=tk.X,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         
-        self.info_label = tk.Label(info_group, text="Info here")
+        self.info_label = tk.Label(info_group, text="Info here", height=2)
         self.info_label.pack(side=tk.TOP)
         
         self.progress_val = tk.DoubleVar()
@@ -125,13 +125,13 @@ class MeasureTab(tk.Frame):
         right_group.pack(side=tk.LEFT)
         
         plot_sel_group = tk.Frame(right_group)
-        plot_sel_group.pack(side=tk.TOP)
+        plot_sel_group.pack(side=tk.TOP,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         tk.Label(plot_sel_group,text="Select coordinate for plotting: ").pack(side=tk.LEFT)
         
         self.plot_select = []
         
         for k,v in dmc.AXES.items():
-            tk.Label(plot_sel_group,text=" {} ".format(k)).pack(side=tk.LEFT)
+            tk.Label(plot_sel_group,text="{}:".format(k)).pack(side=tk.LEFT,padx=PADDING,pady=PADDING)
             self.plot_select.append(tk.ttk.Combobox(plot_sel_group, width=8))
             self.plot_select[-1].pack(side=tk.LEFT)
             self.plot_select[-1].bind("<<ComboboxSelected>>", lambda e: self.plot_select_callback())
