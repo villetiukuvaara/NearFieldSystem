@@ -15,7 +15,7 @@ import time
 import pickle
 import traceback
 from motiontab import MotionTab
-from vnatab import VNATab
+from vnatab import VNATab, MeasurementPlot
 
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -26,6 +26,10 @@ SLEEP = 100
 PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
+
+POS_FORMAT = '{:.3f}'
+POINTS_FORMAT = '{:.0f}'
+STEP_FORMAT = '{:8.3f}'
 
 class MeasurementParams():
     def __init__(freq_sweep, points):
@@ -60,25 +64,34 @@ class MeasureTab(tk.Frame):
         self.top = top
         self.status = Status.NOT_READY
         self.disable_widgets = False
-        tk.Frame.__init__(self, parent)             # do superclass init
+        
         self.vna = vna_obj
         self.dmc = dmc_obj
         self.vna_tab = vna_tab
         self.motion_tab = motion_tab
+        
+        self.freq_sweep = None
+        self.spatial_sweep = None
+        self.data = None
+        self.n = 0
+        self.prev_n = 0
+        self.N = 0
+        self.update = False
+        self.task = None
+        
+        tk.Frame.__init__(self, parent)             # do superclass init
         self.pack()
         self.make_widgets()                      # attach widgets to self
-        self.task = None
-        self.data = None
-        
+        self.update_widgets()
+        self.after(0, self.background_task)
+           
     def clean_up(self):
-        try:
-            if self.task is not None:
-                self.status = Status.NOT_READY
-                while(task.is_alive()):
-                    time.sleep(0.2)
-        except:
-            pass
-        
+        # Tell task to die if it is alive
+        if self.task is not None:
+            task = self.task
+            self.task = None
+            task.join()
+            
     def make_widgets(self):
         # Label frame for starting calibration
         left_group = tk.Frame(self)
@@ -89,9 +102,9 @@ class MeasureTab(tk.Frame):
         
         self.begin_button = tk.Button(run_group, text="Run",command=self.begin_btn_callback)
         self.begin_button.grid(row=1,column=1,padx=PADDING,pady=PADDING)
-        self.pause_button = tk.Button(run_group, text="Pause")
+        self.pause_button = tk.Button(run_group, text="Pause",command=self.pause_btn_callback)
         self.pause_button.grid(row=1,column=2,padx=PADDING,pady=PADDING)
-        self.reset_button = tk.Button(run_group, text="Reset")
+        self.reset_button = tk.Button(run_group, text="Reset",command=self.reset_btn_callback)
         self.reset_button.grid(row=1,column=3,padx=PADDING,pady=PADDING)
         
         info_group = tk.LabelFrame(left_group, text="Info")
@@ -104,147 +117,197 @@ class MeasureTab(tk.Frame):
         
         self.progress_bar = tk.ttk.Progressbar(info_group,
                                           orient=tk.HORIZONTAL,
-                                          variable=self.progress_val)
+                                          variable=self.progress_val,
+                                          length=100)
         self.progress_bar.pack(side=tk.TOP)
         
-        self.bind('<Visibility>', lambda e: self.update_widgets())
-
-        self.update_widgets()
+        right_group = tk.Frame(self)
+        right_group.pack(side=tk.LEFT)
         
+        plot_sel_group = tk.Frame(right_group)
+        plot_sel_group.pack(side=tk.TOP)
+        tk.Label(plot_sel_group,text="Select coordinate for plotting: ").pack(side=tk.LEFT)
+        
+        self.plot_select = []
+        
+        for k,v in dmc.AXES.items():
+            tk.Label(plot_sel_group,text=" {} ".format(k)).pack(side=tk.LEFT)
+            self.plot_select.append(tk.ttk.Combobox(plot_sel_group, width=8))
+            self.plot_select[-1].pack(side=tk.LEFT)
+            self.plot_select[-1].bind("<<ComboboxSelected>>", lambda e: self.plot_select_callback())
+        
+        self.measurement_plot = MeasurementPlot(right_group,"Title")
+        self.measurement_plot.pack(side=tk.TOP,fill=tk.BOTH)
+        
+        self.bind('<Visibility>', lambda e: self.update_widgets())
+    
     def update_widgets(self):
-        if self.status == Status.NOT_READY:
-            if self.dmc.status == dmc.Status.STOP and self.vna.connected and self.vna.cal_ok:
+        if self.dmc.status == dmc.Status.STOP and self.vna.connected and self.vna.cal_ok:
+            if self.status == Status.NOT_READY:
                 self.status = Status.READY
-            
+        else:
+            if self.status != Status.MEASURING:
+                self.status = Status.NOT_READY
+                
+        # Update GUI on background thread
+        self.update = True
+        
+    def _update_widgets(self):
         if self.disable_widgets or self.status == Status.NOT_READY:
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
+            self.progress_val.set(0)
+            self.info_label.config(text="Not configured for measurement", fg="red")
         elif self.status == Status.READY:
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
+            self.progress_val.set(0)
+            self.info_label.config(text="Ready for measurement", fg="black")
         elif self.status == Status.MEASURING:
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.NORMAL)
-            self.stop_button.config(state=tk.DISABLED)
+            self.reset_button.config(state=tk.DISABLED)
+            
+            self.progress_val.set(100*self.n/self.N)
+            p = self.spatial_sweep.get_coordinate(self.n)
+            coord = ", ".join([POS_FORMAT.format(pp) for pp in p])
+            self.info_label.config(text="Measuring at\n[{}]".format(coord), fg="black")
+            
         elif self.status == Status.PAUSED:
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.NORMAL)
+            self.info_label.config(text="Measurement paused", fg="black")
+            
+        elif self.status == Status.DONE:
+            self.begin_button.config(state=tk.DISABLED)
+            self.pause_button.config(state=tk.DISABLED)
+            self.reset_button.config(state=tk.NORMAL)
+            self.progress_val.set(100)
+            self.info_label.config(text="Measurement complete!", fg="black")
+        
+        if self.data != None and len(self.data) > 0:
+            for i,ps in enumerate(self.plot_select):
+                vals = [coord[i] for coord in list(self.data.keys())]
+                vals = list(set(vals))
+                vals.sort()
+                vals = [POS_FORMAT.format(v) for v in vals]
+                
+                if len(vals) == 1:
+                    current = str(vals[0])
+                else:
+                    current = ps.get()
+                    
+                ps.config(values=vals)
+                ps.set(current)
+                
+                if len(vals) < 2:
+                    ps.config(state=tk.DISABLED)
+                else:
+                    ps.config(state=tk.NORMAL)
+                    
+            if len(self.data) == 1:
+                d = self.data[list(self.data.keys())[0]]
+                self.measurement_plot.set_data(d)
+        else:
+            for i,ps in enumerate(self.plot_select):
+                ps.config(values=[])
+                ps.config(state=tk.DISABLED)
+                ps.set('')
+    
+    def plot_select_callback(self):
+        coord = []
+        
+        for i,ps in enumerate(self.plot_select):
+            # The combobox has a truncated version of the float value
+            # Find the value that is closest
+            val = float(ps.get())
+            vals = [coord[i] for coord in list(self.data.keys())]
+            n = [abs(v-val) for v in vals]
+            idx = n.index(min(n))
+            coord.append(vals[idx])
+
+        d = self.data[tuple(coord)]
+            
+        self.measurement_plot.set_data(d)
+            
     
     def begin_btn_callback(self):
-        freq_sweep = self.vna_tab.get_sweep_params()
-        if freq_sweep is None:
+        self.freq_sweep = self.vna_tab.get_sweep_params()
+        if self.freq_sweep is None:
             tk.messagebox.showerror(title="",message="Please check VNA sweep configuration.")
             return
         
-        spatial_sweep = self.motion_tab.get_sweep_params()
-        if spatial_sweep is None:
+        self.spatial_sweep = self.motion_tab.get_sweep_params()
+        if self.spatial_sweep is None:
             tk.messagebox.showerror(title="",message="Please check spatial sweep configuration.")
             return
         
-        util.dprint("Begin measurement")
-        
-        
+        if self.status == Status.READY:
+            self.data = {}
+            self.n = 0
+            self.update_widgets()
+        elif self.status != Status.PAUSED:
+            raise Exception('Begin measurement in bad state')
+            
+        self.status = Status.MEASURING
+        self.update_widgets()
+        self.task = threading.Thread(target=self.measurement_task)
+        self.task.start()
     
-    def measurement_task(self):
-        util.dprint('Started measurement task {}'.format(threading.current_thread()))
-        while True:
-            if self.status != Status.MEASURING:
-                util.dprint('Ending measurement task {}'.format(threading.current_thread()))
-                return
-        
-class MeasurementPlot(tk.Frame):
-    def __init__(self, parent, name):
-        tk.Frame.__init__(self, parent) # do superclass init
-        self.name = name
-        self.pack()
+    def pause_btn_callback(self):
+        self.status = Status.PAUSED
+        self.update_widgets()
+    
+    def reset_btn_callback(self):
+        self.status = Status.READY
         self.data = None
-        self.current_sparam = None
-        
-        self.make_widgets() # attach widgets to self
+        self.n = 0
+        self.measurement_plot.set_data(None)
         self.update_widgets()
-        self.background_task()
-    
-    # data is an array of MeasData
-    def set_data(self, data):
-        self.data = data
-        
-        if self.data is None:
-            self.plot_select.config(values=[])
-            self.plot_select.set('')
-        else:
-            sp = [d.sparam.value for d in self.data]
-            self.plot_select.config(values=sp)
-            self.plot_select.set(sp[0])
-            self.current_sparam = self.data[0].sparam
-        self.update_widgets()
-        
-    def make_widgets(self):
-        self.fig = Figure(figsize=(5, 4), dpi=100,facecolor=(.9375,.9375,.9375))
-        self.ax = self.fig.add_subplot(111)
-        #self.ax.plot(t, 2 * np.sin(2 * np.pi * t))
-        
-        title_group = tk.Frame(self)
-        title_group.pack(side=tk.TOP,pady=5)
-        tk.Label(title_group, text='Choose parameter to plot: ').pack(side=tk.LEFT)
-        self.plot_select = tk.ttk.Combobox(title_group,width=8)
-        self.plot_select.bind("<<ComboboxSelected>>", lambda e: self.plot_select_callback())
-        self.plot_select.pack(side=tk.LEFT,padx=5)
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)  # A tk.DrawingArea.
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-        
-        toolbar = NavigationToolbar2Tk(self.canvas, self)
-        toolbar.update()
-        toolbar.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-        
-    def plot_select_callback(self):
-        self.current_sparam = vna.SParam(self.plot_select.get())
-        self.update_widgets()
-        
-    def update_widgets(self):
-        self.request_update = True
     
     def background_task(self):
-        if self.request_update:
-            self.request_update = False
+        if self.update:
             self._update_widgets()
+            self.update = False
         self.after(SLEEP, self.background_task)
     
-    # This should only be called on the tkinter thread
-    def _update_widgets(self):
-        self.fig.clf()
-        self.ax = self.fig.add_subplot(111)
+    def measurement_task(self):
+        assert isinstance(self.freq_sweep, vna.FreqSweepParams)
+        assert isinstance(self.spatial_sweep, dmc.SpatialSweepParams)
         
-        if self.data is None:
-            self.plot_select.config(state=tk.DISABLED)
-            self.canvas.draw()
-            return
-        else:
-            self.plot_select.config(state=tk.NORMAL)
+        util.dprint('Started measurement task {}'.format(threading.current_thread()))
+        
+        self.N = self.spatial_sweep.get_num_points()
+        
+        self.update_widgets()
+        while self.n < self.N:
+            # Move DMC to the next point
+            p = self.spatial_sweep.get_coordinate(self.n)
+            util.dprint('Move DMC to {}'.format(p))
+            time.sleep(1)
             
-        data = next((d for d in self.data if d.sparam == self.current_sparam), None)
-        
-        if data == None:
-            self.canvas.draw()
-            return
-        
-        colour = 'tab:red'
-        self.ax.plot(data.freq, data.mag, 'r-',label='Magnitude',color=colour)
-        self.ax.set_xlabel('Frequency (Hz)')
-        self.ax.set_ylabel('Magnitude (dB)',color=colour)
-        self.ax.tick_params(axis='y', labelcolor=colour)
-        
-        colour = 'tab:blue'
-        ax2 = self.ax.twinx()
-        ax2.plot(data.freq, data.phase, label='Phase',color=colour)
-        ax2.set_ylabel(u'Phase (\N{DEGREE SIGN})',color=colour)
-        ax2.tick_params(axis='y', labelcolor=colour)
-        self.fig.tight_layout()
-        self.canvas.draw()
+            sp = self.vna.measure_all(self.freq_sweep)
+            
+            try:
+                self.data[tuple(p)] = sp
+            except TypeError:
+                pass # self.data is None after resetting
+            
+            if self.status != Status.MEASURING or self.task == None:
+                self.update_widgets()
+                util.dprint('Ending measurement task {}'.format(threading.current_thread()))
+                return
+            
+            self.n += 1
+            self.update_widgets()
+
+        self.status = Status.DONE
+        self.update_widgets()
+        util.dprint('Done measuring')
+
     
 
         

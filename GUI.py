@@ -18,8 +18,8 @@ class NearFieldGUI:                            # not a widget subbclass
         self.win.protocol("WM_DELETE_WINDOW", self.clean_up)
         self.win.title("Near-Field Measurement System")
         self.win.resizable(False, False)
-        self.dmc = DMC(False)
-        self.vna = vna.VNA(False)
+        self.dmc = DMC(True)
+        self.vna = vna.VNA(True)
         self.make_widgets()
         self.gui_ready = True
 
@@ -60,9 +60,9 @@ class NearFieldGUI:                            # not a widget subbclass
 if __name__ == '__main__':
     util.debug_messages = True
     n = NearFieldGUI()
-    #n.vna.connect(16)
-    #n.vna.set_calibration_params(vna.FreqSweepParams(23e9, 34e9, 101, -11, []))
-    #n.vna.cal_ok = True
-    #n.dmc.connect(DEFAULT_IP)
-    #n.dmc.home()
+    n.vna.connect(16)
+    n.vna.set_calibration_params(vna.FreqSweepParams(23e9, 34e9, 101, -11, []))
+    n.vna.cal_ok = True
+    n.dmc.connect(DEFAULT_IP)
+    n.dmc.home()
     n.win.mainloop()

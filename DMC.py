@@ -172,7 +172,7 @@ class DMC(object):
         self.clean_up()
     
     def send_command(self, command):
-        util.dprint(command)
+        #util.dprint(command)
         self.comm_lock.acquire()
         try:
             if not self.dummy:
@@ -186,7 +186,7 @@ class DMC(object):
         self.comm_lock.acquire()
         try:
             for c in commands:
-                util.dprint(c)
+                #util.dprint(c)
                 if not self.dummy:
                     self.g.GCommand(c);
         finally:

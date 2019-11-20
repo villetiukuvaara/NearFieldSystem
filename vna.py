@@ -197,10 +197,10 @@ class VNA():
         self.cal_params = None
         
     def write(self, msg):
-        if(len(msg) < 200):
-            util.dprint(msg)
-        else:
-            util.dprint(msg[0:30] + " ...")
+#        if(len(msg) < 200):
+#            util.dprint(msg)
+#        else:
+#            util.dprint(msg[0:30] + " ...")
         if not self.dummy:
             self.vna.write(msg)
             
@@ -211,10 +211,10 @@ class VNA():
             return self.vna.read()
     
     def query(self, msg):
-        if(len(msg) < 200):
-            util.dprint(msg)
-        else:
-            util.dprint(msg[0:30] + " ...")
+#        if(len(msg) < 200):
+#            util.dprint(msg)
+#        else:
+#            util.dprint(msg[0:30] + " ...")
         if self.dummy:
             return "1"
         else:
