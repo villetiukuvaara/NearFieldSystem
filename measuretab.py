@@ -16,6 +16,7 @@ import pickle
 import traceback
 from motiontab import MotionTab
 from vnatab import VNATab, MeasurementPlot
+import csv
 
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -121,8 +122,14 @@ class MeasureTab(tk.Frame):
                                           length=100)
         self.progress_bar.pack(side=tk.TOP)
         
+        export_group = tk.LabelFrame(left_group, text="Export data")
+        export_group.pack(side=tk.TOP,fill=tk.X,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
+        
+        self.export_csv_button = tk.Button(export_group, text="Export CSV", command=self.export_csv_callback)
+        self.export_csv_button.pack(side=tk.TOP,padx=PADDING,pady=PADDING)
+        
         right_group = tk.Frame(self)
-        right_group.pack(side=tk.LEFT)
+        right_group.pack(side=tk.LEFT,fill=tk.X,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
         
         plot_sel_group = tk.Frame(right_group)
         plot_sel_group.pack(side=tk.TOP,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
@@ -157,18 +164,21 @@ class MeasureTab(tk.Frame):
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
+            self.export_csv_button.config(state=tk.DISABLED)
             self.progress_val.set(0)
             self.info_label.config(text="Not configured for measurement", fg="red")
         elif self.status == Status.READY:
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
+            self.export_csv_button.config(state=tk.DISABLED)
             self.progress_val.set(0)
             self.info_label.config(text="Ready for measurement", fg="black")
         elif self.status == Status.MEASURING:
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.NORMAL)
             self.reset_button.config(state=tk.DISABLED)
+            self.export_csv_button.config(state=tk.DISABLED)
             
             self.progress_val.set(100*self.n/self.N)
             p = self.spatial_sweep.get_coordinate(self.n)
@@ -179,12 +189,14 @@ class MeasureTab(tk.Frame):
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.NORMAL)
+            self.export_csv_button.config(state=tk.NORMAL)
             self.info_label.config(text="Measurement paused", fg="black")
             
         elif self.status == Status.DONE:
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.NORMAL)
+            self.export_csv_button.config(state=tk.NORMAL)
             self.progress_val.set(100)
             self.info_label.config(text="Measurement complete!", fg="black")
         
@@ -307,8 +319,43 @@ class MeasureTab(tk.Frame):
         self.status = Status.DONE
         self.update_widgets()
         util.dprint('Done measuring')
-
+        
+    def export_csv_callback(self):
+        my_filetypes = [('comma-separated values files', '.csv'),("all files","*.*")]
+        filename = filedialog.asksaveasfilename(parent=self,
+                                                initialdir=os.getcwd(),
+                                                title="Select file",
+                                                filetypes=my_filetypes,
+                                                defaultextension=".csv")
+        if filename is "":
+            tk.messagebox.showerror(message="No file selected!")
+            return # User did not select a file
+        else:
+            threading.Thread(target=lambda: self.export_csv_task(filename)).start()
     
-
+    def export_csv_task(self, filename):
+        self.config(cursor="wait")
+        with open(filename, mode='w+') as file:
+            writer = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            
+            if len(self.data) == 0:
+                return # No data to write out
+            
+            # Write header
+            header = ['X', 'Y', 'Z', 'S-parameter', 'Frequency']
+            writer.writerow(header)
+  
+            for pos,sp_sweep in self.data.items():
+                row1 = ['{:.10f}'.format(p) for p in pos]
+                
+                for sp_data in sp_sweep:
+                    row2 = row1 + [sp_data.sweep_params.sparams[0].value]
+                    
+                    for i in range(len(sp_data.freq)):
+                        d = ['{:.5E}'.format(sp_data.freq[i]), '{:.5f}'.format(sp_data.mag[i]), '{:.5f}'.format(sp_data.phase[i])]
+                        writer.writerow(row2 + d)
+        self.config(cursor="")
+        tk.messagebox.showinfo(message="Export complete")
+                
         
     

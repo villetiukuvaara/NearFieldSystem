@@ -545,6 +545,7 @@ class MeasurementPlot(tk.Frame):
     def _update_widgets(self):
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
+        self.fig.subplots_adjust(top=0.97)
         
         if self.data is None:
             self.plot_select.config(state=tk.DISABLED)
