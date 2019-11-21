@@ -496,6 +496,10 @@ class MeasurementPlot(tk.Frame):
     
     # data is an array of MeasData
     def set_data(self, data):
+        # Only update if data changed
+        if self.data is data:
+            return
+        
         self.data = data
         
         if self.data is None:

@@ -223,12 +223,32 @@ class MeasureTab(tk.Frame):
             if len(self.data) == 1:
                 d = self.data[list(self.data.keys())[0]]
                 self.measurement_plot.set_data(d)
+            
+            else:
+                coord = []
+            
+                for i,ps in enumerate(self.plot_select):
+                    # The combobox has a truncated version of the float value
+                    # Find the value that is closest
+                    val = float(ps.get())
+                    vals = [coord[i] for coord in list(self.data.keys())]
+                    n = [abs(v-val) for v in vals]
+                    idx = n.index(min(n))
+                    coord.append(vals[idx])
+                
+                try:
+                    d = self.data[tuple(coord)]
+                except KeyError:
+                    d = None
+                    
+                self.measurement_plot.set_data(d)
+            
         else:
             for i,ps in enumerate(self.plot_select):
                 ps.config(values=[])
                 ps.config(state=tk.DISABLED)
                 ps.set('')
-    
+        
     def plot_select_callback(self):
         coord = []
         
@@ -241,11 +261,14 @@ class MeasureTab(tk.Frame):
             idx = n.index(min(n))
             coord.append(vals[idx])
 
-        d = self.data[tuple(coord)]
+        try:
+            d = self.data[tuple(coord)]
+        except KeyError:
+            tk.messagebox.showerror(message="Point not yet measured")
+            d = None
             
         self.measurement_plot.set_data(d)
-            
-    
+ 
     def begin_btn_callback(self):
         self.freq_sweep = self.vna_tab.get_sweep_params()
         if self.freq_sweep is None:
