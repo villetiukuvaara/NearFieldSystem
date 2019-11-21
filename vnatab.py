@@ -234,8 +234,10 @@ class VNATab(tk.Frame):
             threading.Thread(target=lambda: self.measure_task(p)).start()
     
     def measure_task(self, params):
+        self.config(cursor="wait")
         data = self.vna.measure_all(params)
         self.measurement_plot.set_data(data)
+        self.config(cursor="")
     
     def enable_entries(self, enable):
         if enable:
