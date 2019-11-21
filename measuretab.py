@@ -23,7 +23,7 @@ from matplotlib.backends.backend_tkagg import (
 from matplotlib.figure import Figure
 import numpy as np
 
-SLEEP = 100
+SLEEP = 50
 PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
@@ -52,6 +52,7 @@ class Status(Enum):
     PAUSED = 3
     STOPPED = 4
     DONE = 5
+    ERROR = 6
 
 class Measurement():
     def __init__(self, x, y, z, meas):
@@ -199,6 +200,12 @@ class MeasureTab(tk.Frame):
             self.export_csv_button.config(state=tk.NORMAL)
             self.progress_val.set(100)
             self.info_label.config(text="Measurement complete!", fg="black")
+        elif self.status == Status.ERROR:
+            msg = 'An error occured!\n\n' + '\n'.join([str(e) + ':' + str(i) for i,e in enumerate(self.dmc.errors)])
+            msg += '\n\n' + '\n'.join([str(s) for s in self.dmc.stop_code])
+            tk.messagebox.showerror( message=msg)
+            self.status = Status.NOT_READY
+            self.update = True
         
         if self.data != None and len(self.data) > 0:
             for i,ps in enumerate(self.plot_select):
@@ -305,8 +312,8 @@ class MeasureTab(tk.Frame):
     
     def background_task(self):
         if self.update:
-            self._update_widgets()
             self.update = False
+            self._update_widgets()
         self.after(SLEEP, self.background_task)
     
     def measurement_task(self):
@@ -321,8 +328,12 @@ class MeasureTab(tk.Frame):
         while self.n < self.N:
             # Move DMC to the next point
             p = self.spatial_sweep.get_coordinate(self.n)
-            util.dprint('Move DMC to {}'.format(p))
-            time.sleep(1)
+            util.dprint('Move to {}'.format(p))
+            
+            # Wait up to 60 seconds for move, otherwise error
+            if not self.dmc.move_absolute_blocking(p, 60):
+                self.dmc.disable_motors()
+                self.status = Status.ERROR
             
             sp = self.vna.measure_all(self.freq_sweep)
             

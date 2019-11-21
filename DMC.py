@@ -15,7 +15,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 4 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.146'
+DEFAULT_IP = '134.117.39.124'
 
 class Motor(Enum):
     X = 'A'
@@ -99,7 +99,6 @@ class SpatialSweepParams():
             for j in i:
                 assert isinstance(j, int) or isinstance(j, float)
             
-            assert(i[1] >= i[0]) # stop > start
             assert(i[2] > 0) # Positive number of points
             
             pos.append(np.linspace(i[0], i[1], i[2]))
@@ -128,6 +127,7 @@ class DMC(object):
         
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
+        self.block = False
         
         self.speed = [0, 0, 0]
         self.position_cnt = None # Do not have position count until homing is done
@@ -580,6 +580,7 @@ class DMC(object):
                                 self.current_limits[mi] = 0
                             else:
                                 raise Exception('Unexpected stop code during movement')
+                        self.block = False
                     
                         
                 if self.status == Status.HOMING:
@@ -595,6 +596,7 @@ class DMC(object):
                             time.sleep(0.25)
                             for mi,m in enumerate(AXES_MOTORS):
                                 self.send_command('DP{}=0'.format(m.value))
+                        self.block = False
                                 
                 if self.status != Status.DISCONNECTED and self.status != Status.ERROR:
                     self.update_errors()
@@ -667,6 +669,20 @@ class DMC(object):
         self.request_queue.put(DMCRequest(Status.MOVING_RELATIVE).move_params(move),
                                False) # False makes it not blocking
     
+     # move is a vector indicating the final position in cm
+    def move_absolute_blocking(self, pos, wait):
+        self.block = True
+        self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
+                               False) # False makes it not blocking
+        sleep = 0
+        while self.block:
+            time.sleep(0.1)
+            sleep += 0.1
+            if sleep > wait:
+                return False
+        
+        return True
+    
     # move is a vector indicating the final position in cm
     def move_absolute(self, pos):
         self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
@@ -678,6 +694,6 @@ class DMC(object):
 
 if __name__ == "__main__":
     util.debug_messages = True
-    d = DMC(True)
+    d = DMC(False)
     d.connect(DEFAULT_IP)
     d.stop()
