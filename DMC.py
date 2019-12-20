@@ -12,10 +12,11 @@ import numpy as np
 
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 4 # Max speed in cm/sec
+MAX_SPEED = 6 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-DEFAULT_IP = '134.117.39.124'
+DEFAULT_IP = '134.117.39.147'
+#DEFAULT_IP = 'COM4'
 
 class Motor(Enum):
     X = 'A'
@@ -329,6 +330,9 @@ class DMC(object):
                     
                     self.ip_address = r.ip
                     self.send_command('RS') # Perform reset to power on condition
+                    time.sleep(0.5)
+                    #self.send_command('DH0') # Prevent DHCP from assigning new address while in use
+                    self.send_command('EO0') # Turn off echo
 
                     self.errors = {}
                     self.update_errors()
@@ -388,6 +392,7 @@ class DMC(object):
                 if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
                     self.disable_motors()
                     if self.g is not None:
+                        #self.send_command('DH1') # Enable DHCP
                         info = self.g.GInfo()
                         self.g.GClose()
                         util.dprint('Closed connection to ' + info)
@@ -490,7 +495,7 @@ class DMC(object):
                     self.send_command('MO') # Disable motors
                     time.sleep(0.5) # Wait a moment
                     self.send_command('SH') # Enable motors
-                    self.set_speed(MAX_SPEED/4)
+                    self.set_speed(MAX_SPEED/2)
                     
                     # For x axis, need to check which limit we are at
                     if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
@@ -647,6 +652,7 @@ class DMC(object):
             
     
     def connect(self, ip_address=DEFAULT_IP):
+        ip_address = 'COM4'
         self.request_queue.put(DMCRequest(Status.MOTORS_DISABLED).connect_params(ip_address),
                                False) # False makes it not blocking
         
@@ -696,4 +702,5 @@ if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
     d.connect(DEFAULT_IP)
+    #d.connect('COM4')
     d.stop()

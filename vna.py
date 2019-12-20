@@ -15,11 +15,11 @@ import numpy as np
 import pickle
 import struct
 
-FREQ_MIN = 20e9 # in Hz
+FREQ_MIN = 26e9 # in Hz
 FREQ_MAX = 40e9 # in Hz
 POINTS_MIN = 3 # Number of steps
 POINTS_MAX = 1601 # Number of steps
-POINTS_DEFAULT = 1601
+POINTS_DEFAULT = 101
 POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
@@ -175,6 +175,9 @@ class VNA():
             self.cal_type = CalType.CALIS111
             self.cal_ok = True
         elif CalType.CALIS221 in cal_data:
+            self.cal_type = CalType.CALIS221
+            self.cal_ok = True
+        else:
             self.cal_type = CalType.CALIS221
             self.cal_ok = True
     

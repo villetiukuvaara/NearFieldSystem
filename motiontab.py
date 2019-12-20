@@ -19,7 +19,7 @@ class MotionTab(tk.Frame):
     MAX_STEPS = 999 # Maximum number of steps
     
     # DEFAULT_VALS[AXIS][POS]
-    DEFAULT_VALS = {'X':[1,4,3], 'Y':[1,16,3], 'Z':[-1,-5,1]}
+    DEFAULT_VALS = {'X':[7.5,137.5,13], 'Y':[30,130,10], 'Z':[-34,-34,1]}
     POS_FORMAT = '{:.3f}'
     POINTS_FORMAT = '{:.0f}'
     STEP_FORMAT = '{:8.3f}'
