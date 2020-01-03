@@ -73,7 +73,7 @@ class FreqSweepParams():
         return "<FreqSweepParams start:{:.3E} stop:{:.3E} points:{:d} power:{:.2f} sp: [{}]".format(
                 self.start, self.stop, self.points, self.power, sp)
     
-    def validation_messages(self):
+    def validation_messages(self, check_sparams=False):
         errors = []
         if self.start < FREQ_MIN or self.start > FREQ_MAX:
             errors.append("Start frequency should be {} GHz to {} GHz".format(FREQ_MIN/1e9, FREQ_MAX/1e9));
@@ -85,6 +85,8 @@ class FreqSweepParams():
             errors.append("Number of points should be from {} to {}".format(POINTS_MIN, POINTS_MAX));
         if self.power < POWER_MIN or self.power > POWER_MAX:
             errors.append("Power level should be between {} dBm and {} dBm".format(POWER_MIN, POWER_MAX));
+        if len(self.sparams) == 0 and check_sparams:
+            errors.append("No S-parameters are selected");
         if len(errors) > 0:
             return errors
         else:
@@ -175,9 +177,6 @@ class VNA():
             self.cal_type = CalType.CALIS111
             self.cal_ok = True
         elif CalType.CALIS221 in cal_data:
-            self.cal_type = CalType.CALIS221
-            self.cal_ok = True
-        else:
             self.cal_type = CalType.CALIS221
             self.cal_ok = True
     
@@ -282,6 +281,9 @@ class VNA():
                         d = (1, 2, 3)
                     data2.append(d)
                 data[t] = data2
+        
+        if self.dummy:
+            return {}
         
         return data
     
@@ -522,7 +524,7 @@ class VNA():
     def measure(self,sweep_params):
         assert isinstance(sweep_params, FreqSweepParams)
         
-        if not self.connected or not self.cal_ok:
+        if not self.connected:
             return None
 
         self.set_sweep_params(sweep_params)

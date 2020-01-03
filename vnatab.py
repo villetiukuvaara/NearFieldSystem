@@ -82,12 +82,24 @@ class VNATab(tk.Frame):
         meas_group.pack(side=tk.TOP,fill=tk.BOTH)
         config_meas_group = tk.LabelFrame(meas_group, text="Configure Measurement");
         config_meas_group.pack(side=tk.TOP,fill=tk.BOTH,expand=tk.YES,padx=PADDING,pady=PADDING,ipadx=PADDING,ipady=PADDING)
-
+        
+        # Desired S-parameters
+        self.sparams = {sp : tk.IntVar() for sp in vna.SParam}
+        self.sp_entries = []
+        
+        n = 0
+        for k,v in self.sparams.items():
+            cb = tk.Checkbutton(config_meas_group, text=k.value, variable=v)
+            cb.grid(row=n%2 + 2,column=(n>1)+1, padx=PADDING,pady=PADDING,sticky=tk.E)
+            self.sp_entries.append(cb)
+            n += 1
+        n += 2
+            
         # Labels for start, stop, step rows
-        tk.Label(config_meas_group,text="Start (GHz)").grid(row=2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
-        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
-        tk.Label(config_meas_group,text="Number of points").grid(row=4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
-        tk.Label(config_meas_group,text="Power (dB)").grid(row=5,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Start (GHz)").grid(row=n,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Stop (GHz)").grid(row=n+1,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Number of points").grid(row=n+2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Power (dB)").grid(row=n+3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = {}
         self.entries = []
@@ -107,7 +119,7 @@ class VNATab(tk.Frame):
                 self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[pos], validate="key",
                                              width=7, validatecommand=(self.register(self.validate_entry), "%P", True)))
                 self.entry_strings[pos].set(DEFAULT_PARAMS[i])
-            self.entries[i].grid(row=i+2,column=2,padx=PADDING,pady=PADDING)
+            self.entries[i].grid(row=i+n,column=2,padx=PADDING,pady=PADDING)
         
         self.measure_btn = tk.Button(left_group,text="Take measurement",command=self.measure_btn_callback)
         self.measure_btn.pack(side=tk.TOP)
@@ -125,11 +137,17 @@ class VNATab(tk.Frame):
             stop = float(self.entry_strings['stop'].get())*1e9
             points = int(self.points.get())
             power = float(self.entry_strings['power'].get())
+            params = []
+            
+            for sp,val in self.sparams.items():
+                if val.get():
+                    params.append(sp)
+                    
         except ValueError:
             return None
         
         try:
-            return vna.FreqSweepParams(start, stop, points, power, [])
+            return vna.FreqSweepParams(start, stop, points, power, params)
         except AssertionError:
             return None
     
@@ -227,7 +245,7 @@ class VNATab(tk.Frame):
             tk.messagebox.showerror(message="Please check sweep parameters.")
             return
             
-        msgs = p.validation_messages()
+        msgs = p.validation_messages(check_sparams=True)
         if msgs is not None:
             tk.messagebox.showerror(message="Please fix sweep parameters.\n\n" + '\n'.join(msgs))
         else:
@@ -235,7 +253,7 @@ class VNATab(tk.Frame):
     
     def measure_task(self, params):
         self.config(cursor="wait")
-        data = self.vna.measure_all(params)
+        data = self.vna.measure(params)
         self.measurement_plot.set_data(data)
         self.config(cursor="")
     
@@ -245,6 +263,8 @@ class VNATab(tk.Frame):
         else:
             val = tk.DISABLED
         for e in self.entries:
+            e.config(state=val)
+        for e in self.sp_entries:
             e.config(state=val)
         self.points.config(state=val)
         
@@ -272,16 +292,16 @@ class VNATab(tk.Frame):
             self.measurement_plot.set_data(None)
             self.enable_entries(False)
         elif not self.vna.cal_ok:
-            self.calibration_label.config(text="Calibration required", fg="red",height=5)
+            self.calibration_label.config(text="No calibration detected", fg="red",height=5)
             self.save_button.config(state=tk.DISABLED)
             self.load_button.config(state=tk.NORMAL)
             self.connect_button.config(state=tk.DISABLED)
             self.disconnect_button.config(state=tk.NORMAL)
             self.calibration_button.config(state=tk.NORMAL)
             self.gpib_entry.config(state=tk.DISABLED)
-            self.measure_btn.config(state=tk.DISABLED)
+            self.measure_btn.config(state=tk.NORMAL)
             self.measurement_plot.set_data(None)
-            self.enable_entries(False)
+            self.enable_entries(True)
         else: # Connected and calibration is ok
             ct = self.vna.cal_type
             cal_type = ""

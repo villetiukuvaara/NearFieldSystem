@@ -150,7 +150,7 @@ class MeasureTab(tk.Frame):
         self.bind('<Visibility>', lambda e: self.update_widgets())
     
     def update_widgets(self):
-        if self.dmc.status == dmc.Status.STOP and self.vna.connected and self.vna.cal_ok:
+        if self.dmc.status == dmc.Status.STOP and self.vna.connected:
             if self.status == Status.NOT_READY:
                 self.status = Status.READY
         else:
@@ -280,6 +280,11 @@ class MeasureTab(tk.Frame):
         self.freq_sweep = self.vna_tab.get_sweep_params()
         if self.freq_sweep is None:
             tk.messagebox.showerror(title="",message="Please check VNA sweep configuration.")
+            return
+        
+        msgs = self.freq_sweep.validation_messages(check_sparams=True)
+        if msgs is not None:
+            tk.messagebox.showerror(message="Please fix sweep parameters.\n\n" + '\n'.join(msgs))
             return
         
         self.spatial_sweep = self.motion_tab.get_sweep_params()
