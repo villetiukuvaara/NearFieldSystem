@@ -91,6 +91,7 @@ class VNATab(tk.Frame):
         for k,v in self.sparams.items():
             cb = tk.Checkbutton(config_meas_group, text=k.value, variable=v)
             cb.grid(row=n%2 + 2,column=(n>1)+1, padx=PADDING,pady=PADDING,sticky=tk.E)
+            v.set(1)
             self.sp_entries.append(cb)
             n += 1
         n += 2
