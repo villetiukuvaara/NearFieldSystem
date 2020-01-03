@@ -36,6 +36,7 @@ class MotionTab(tk.Frame):
         self.force_update = False
         self.gui_ready = True
         self.die = False
+        self.disable_widgets = False
         
         self.force_update = True
         self.after(50, self.background_task)
@@ -250,6 +251,15 @@ class MotionTab(tk.Frame):
         self.speed_scale.config(state=state)
         for b in self.joystick_buttons:
             b.config(state=state)
+            
+    def enable_entries(self, enable=True):
+        if enable:
+            val = tk.NORMAL
+        else:
+            val = tk.DISABLED
+        
+        for k,v in self.entries.items():
+            v.config(state=val)
     
     def connect_callback(self):
         ip = ''
@@ -302,6 +312,10 @@ class MotionTab(tk.Frame):
     
     def speed_callback(self, speed):
         self.dmc.set_speed(self.speed_scale.get())
+        
+    def enable_widgets(self, enabled=True):
+        self.disable_widgets = not enabled
+        self.force_update = True
                     
     def background_task(self):
         status = self.dmc.status
@@ -317,19 +331,34 @@ class MotionTab(tk.Frame):
                 self.enable_connect(True)
                 self.enable_joystick(False)
                 self.calibration_label.config(text='Motor controller is disconnected', fg='red')
+                self.enable_entries(False)
             
             if status is DMC.Status.DISCONNECTED:
                 self.enable_connect(True)
                 self.enable_joystick(False)
                 self.calibration_label.config(text='Motor controller is disconnected', fg='red')
+                self.enable_entries(False)
+                
             if status is DMC.Status.MOTORS_DISABLED:
                 self.enable_connect(False)
                 self.enable_joystick(False)
                 self.calibration_label.config(text='Homing needs to be performed', fg='red')
+                self.enable_entries(False)
+                
             if status is DMC.Status.STOP:
                 self.enable_connect(False)
                 self.enable_joystick(True)
                 self.calibration_label.config(text='Ready for measurement', fg='black')
+                self.enable_entries(True)
+                
+            if self.disable_widgets:
+                self.enable_connect(False)
+                self.enable_joystick(False)
+                self.disconnect_button.config(state=tk.DISABLED)
+                self.home_button.config(state=tk.DISABLED)
+                self.stop_button.config(state=tk.DISABLED)
+                self.enable_entries(False)
+                
             self.force_update = False
             self.last_dmc_status = status
         

@@ -162,20 +162,25 @@ class MeasureTab(tk.Frame):
         
     def _update_widgets(self):
         if self.disable_widgets or self.status == Status.NOT_READY:
+            self.top.enable_tabs(True)
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
             self.export_csv_button.config(state=tk.DISABLED)
+            
             self.progress_val.set(0)
             self.info_label.config(text="Not configured for measurement", fg="red")
         elif self.status == Status.READY:
+            self.top.enable_tabs(True)
             self.begin_button.config(state=tk.NORMAL)
             self.pause_button.config(state=tk.DISABLED)
             self.reset_button.config(state=tk.DISABLED)
             self.export_csv_button.config(state=tk.DISABLED)
+            
             self.progress_val.set(0)
             self.info_label.config(text="Ready for measurement", fg="black")
         elif self.status == Status.MEASURING:
+            self.top.enable_tabs(False)
             self.begin_button.config(state=tk.DISABLED)
             self.pause_button.config(state=tk.NORMAL)
             self.reset_button.config(state=tk.DISABLED)

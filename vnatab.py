@@ -268,6 +268,10 @@ class VNATab(tk.Frame):
         for e in self.sp_entries:
             e.config(state=val)
         self.points.config(state=val)
+    
+    def enable_widgets(self, enable=True):
+        self.disable_widgets = not enable
+        self.update_widgets()
         
     def update_widgets(self):
         if self.disable_widgets:
@@ -279,7 +283,6 @@ class VNATab(tk.Frame):
             self.calibration_button.config(state=tk.DISABLED)
             self.gpib_entry.config(state=tk.DISABLED)
             self.measure_btn.config(state=tk.DISABLED)
-            self.top.enable_tabs(False)
             self.enable_entries(False)
         elif not self.vna.connected:
             self.calibration_label.config(text="Not connected to VNA", fg="red",height=5)

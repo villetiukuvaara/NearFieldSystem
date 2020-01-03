@@ -43,20 +43,9 @@ class NearFieldGUI:                            # not a widget subbclass
         self.dmc.clean_up()
         self.win.destroy()
     
-    def enable_tabs(self, enabled=None):
-        pass
-        # Need to implement
-#        if enabled == None:
-#            for t in self.tabs.tabs():
-#            if enabled == t:
-#                self.tabs.tab(t, state=tk.NORMAL)
-#        else:
-#            for t in self.tabs.tabs():
-#                if enabled == t:
-#                    self.tabs.tab(t, state=tk.NORMAL)
-#                else:
-#                    #t.config(state=tk.DISABLED)
-#                     self.tabs.tab(t, state=tk.DISABLED)
+    def enable_tabs(self, enabled=True):
+        self.vna_tab.enable_widgets(enabled)
+        self.motion_tab.enable_widgets(enabled)
 
 if __name__ == '__main__':
     util.debug_messages = True
