@@ -8,6 +8,7 @@ import util
 import re
 import DMC
 import threading
+import serial.tools.list_ports
 
 class MotionTab(tk.Frame):
     
@@ -88,13 +89,31 @@ class MotionTab(tk.Frame):
         # Label frame for starting calibration of CNC frame
         dmc_group = tk.LabelFrame(self, text="Motor Controller")
         dmc_group.pack(side=tk.TOP,fill=tk.X,expand=1,padx=5,pady=5,ipadx=5,ipady=5)
+        
+        self.connect_type = tk.IntVar()
+        self.connect_type_buttons = []
+        
         #dmc_group_left = tk.Frame(dmc_group)
         #dmc_group_left.pack(side=tk.LEFT)
         ip_add = tk.Frame(dmc_group)
         ip_add.pack(side=tk.TOP)
-        tk.Label(ip_add, text="IP Address: ").pack(side=tk.LEFT)
+        a = tk.Radiobutton(ip_add, text="Connect via IP: ", variable=self.connect_type, value=1)
+        a.pack(side=tk.LEFT)
+        #tk.Label(ip_add, text="IP Address: ").pack(side=tk.LEFT)
         self.ip_strings = []
         self.ip_entries = []
+        
+        usb = tk.Frame(dmc_group)
+        usb.pack(side=tk.TOP)
+        b = tk.Radiobutton(usb, text="Connect via USB", variable=self.connect_type, value=2)
+        b.pack(side=tk.LEFT)
+        ports = serial.tools.list_ports.comports()
+        ports2 = [p.device for p in ports]
+        self.com_port_select = tk.ttk.Combobox(usb, width=8, values=ports2)
+        self.com_port_select.pack(side=tk.LEFT)
+        
+        self.connect_type_buttons = [a, b]
+        self.connect_type.set(1)
         
         
         ip = DMC.DEFAULT_IP.split('.')
@@ -262,15 +281,20 @@ class MotionTab(tk.Frame):
             v.config(state=val)
     
     def connect_callback(self):
-        ip = ''
-        for i in range(4):
-            s = self.ip_strings[i].get()
-            if len(s) == 0:
-                tk.messagebox.showerror(title="Connection Error", message="IP Address is not valid")
-                return
-            if i > 0:
-                ip += '.'
-            ip += s
+        ip = None
+        if self.connect_type.get() == 1:
+            ip = ''
+            for i in range(4):
+                s = self.ip_strings[i].get()
+                if len(s) == 0:
+                    tk.messagebox.showerror(title="Connection Error", message="IP Address is not valid")
+                    return
+                if i > 0:
+                    ip += '.'
+                ip += s
+        elif self.connect_type.get() == 2:
+            ip = self.com_port_select.get()
+            util.dprint("usb ip {}".format(ip))
         self.dmc.connect(ip)
         
     def disconnect_callback(self):
@@ -319,7 +343,9 @@ class MotionTab(tk.Frame):
                     
     def background_task(self):
         status = self.dmc.status
-        self.update_current_stats()
+        
+        if status != DMC.Status.DISCONNECTED and status != DMC.Status.ERROR:
+            self.update_current_stats()
         
         if self.last_dmc_status != status or self.force_update:
             if self.dmc.status == DMC.Status.ERROR:

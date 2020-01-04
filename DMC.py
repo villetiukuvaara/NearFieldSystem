@@ -147,14 +147,14 @@ class DMC(object):
         self.ip_address = DEFAULT_IP
         
         self.request_queue = queue.Queue()
-        self.task = threading.Thread(target = self.background_task)
-        self.task.start()
+        #self.task = threading.Thread(target = self.background_task)
+        #self.task.start()
 
     def clean_up(self):
         try:
             self.disconnect()
-            while not self.status == Status.DISCONNECTED:
-                time.sleep(0.2)
+            #while not self.status == Status.DISCONNECTED:
+            #    time.sleep(0.2)
             
             task = self.task
             self.task = None
@@ -305,29 +305,31 @@ class DMC(object):
     def max_position(self):
         return [10, 20, 30];
     
-    # Task that runs in background and takes care of DMC control
-    def background_task(self):
-        util.dprint('Started DMC task {}'.format(threading.current_thread()))
-        while True:
-            # Run the loop forever, unless it is no longer referenced (via self.task) or the
-            # DMC becomes not configured
+    
+    def process_request(self):
+        try:
+            old_status = self.status
+            r = self.request_queue.get(True, 0.02)
             
-            if threading.current_thread() != self.task:
-                util.dprint('Ending DMC task {}'.format(threading.current_thread()))
-                return # End this task if it's no longer referenced 
-            
-            try:
-                r = self.request_queue.get(True, 0.02)
-                old_status = self.status
-                
-                if r.type == Status.MOTORS_DISABLED and (self.status == Status.DISCONNECTED or self.status == Status.ERROR):
-                    if not self.dummy:
-                        self.g = gclib.py();
-                        print('gclib version:', self.g.GVersion())
-                        #self.g.GOpen('192.168.0.42 --direct -s ALL')
+            if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED: #or self.status == Status.ERROR):
+                connected = False
+                if not self.dummy:
+                    self.g = gclib.py();
+                    print('gclib version:', self.g.GVersion())
+                    #self.g.GOpen('192.168.0.42 --direct -s ALL')
+                    try:
                         self.g.GOpen(r.ip)
+                        connected = True
                         print("Connected to:" + self.g.GInfo())
+                        
+                    except gclib.GclibError:
+                        #self.errors[ErrorType.GCLIB] = "Failed to connect"
+                        self.status = Status.ERROR
                     
+                else:
+                    connected = True
+                
+                if connected:
                     self.ip_address = r.ip
                     self.send_command('RS') # Perform reset to power on condition
                     time.sleep(0.5)
@@ -388,178 +390,191 @@ class DMC(object):
                         self.errors = {}
                        
                     self.status = Status.MOTORS_DISABLED
-                
-                if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
-                    self.disable_motors()
-                    if self.g is not None:
-                        #self.send_command('DH1') # Enable DHCP
-                        info = self.g.GInfo()
-                        self.g.GClose()
-                        util.dprint('Closed connection to ' + info)
-                    
-                    self.status = Status.DISCONNECTED
-                
-                if r.type == Status.STOP and self.status != Status.DISCONNECTED:
-                    if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
-                        # If motors are disabled, need to use Serve Here command
-                        # to enable, which sets the coordinate system to (0,0,0)
-                        self.send_command('SH')
-                        # Set to None to indicate uncalibrated coordinate system
-                        self.position_cnt = None
-                        self.status = Status.STOP
-                    elif self.status == Status.HOMING:
-                        self.send_command('ST')
-                        self.disable_motors()
-                        self.status = Status.MOTORS_DISABLED
-                    else:
-                        self.send_command('ST')
-                        self.update_limits()
-                        self.status = Status.STOP
-                        
-                    if self.dummy:
-                        self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
-                    
-                if r.type == Status.MOTORS_DISABLED and self.status != Status.DISCONNECTED:
-                    self.send_command('ST')
-                    self.send_command('MO')
-                    self.position_cnt = None
-                    self.status = Status.MOTORS_DISABLED
-                
-                if r.type == Status.JOGGING and self.status == Status.STOP:
-                    # Only move if not at limit
-                    if (r.forward and self.current_limits[r.axis] <= 0) or (not r.forward and self.current_limits[r.axis] >= 0):
-                        self.movement_direction = [0,0,0]
-                        self.movement_direction[r.axis] = r.forward
-                        motor = AXES_MOTORS[r.axis].value
-                        
-                        self.update_limits()
-
-                        sign = 1
-                        if not r.forward:
-                            sign = -1
-                        self.send_command('JG{}={}'.format(motor, 
-                                   sign*self.speed[r.axis]))
-                        self.send_command('BG{}'.format(motor))
-                        
-                        if self.dummy:
-                            self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
-                            
-                        self.status = Status.JOGGING
-                    
-                if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
-                    status = Status.MOVING_RELATIVE
-                    dir = []
-                    
-                    for mi,m in enumerate(AXES_MOTORS):
-                        # If limit is active, check we are moving in the opposite direction
-                        if (r.coord[mi] < 0 and self.current_limits[mi] < 0) or (r.coord[mi] > 0 and self.current_limits[mi] > 0):
-                            status = Status.STOP
-                            break
-                        self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
-                        self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
-                        
-                        dir.append(r.coord[mi] >= 0)
-                    
-                    if status == Status.MOVING_RELATIVE:
-                        self.movement_direction = dir
-                        self.configure_limits()
-                        self.send_command('BG')
-                        
-                    self.status = status
-                
-                if r.type == Status.MOVING_ABSOLUTE and self.status == Status.STOP:
-                    status = Status.MOVING_ABSOLUTE
-                    
-                    pos = [math.floor(coord*cnt) for coord,cnt in zip(r.coord,CNT_PER_CM)]
-                    delta = [stop-start for stop,start in zip(pos, self.position_cnt)]
-                    dir = []
-                    
-                    for mi,m in enumerate(AXES_MOTORS):
-                        # If limit is active, check we are moving in the opposite direction
-                        if (delta[mi] < 0 and self.current_limits[mi] < 0) or (delta[mi] > 0 and self.current_limits[mi] > 0):
-                            status = Status.STOP
-                            break
-                        self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
-                        self.send_command('PA{}={}'.format(m.value, pos[mi]))
-                        
-                        dir.append(delta[mi] >= 0)
-
-                    if status == Status.MOVING_ABSOLUTE:
-                        self.movement_direction = dir
-                        self.configure_limits()
-                        self.send_command('BG')
-                        
-                    self.status = status
-                    
-                if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
-                    self.send_command('MO') # Disable motors
-                    time.sleep(0.5) # Wait a moment
-                    self.send_command('SH') # Enable motors
-                    self.set_speed(MAX_SPEED/2)
-                    
-                    # For x axis, need to check which limit we are at
-                    if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
-                        # Try moving 1 cm in +X, and see if limit is still active
-                        self.current_limits[0] = -1 # Force movement enabled in +X         
-                        self.movement_direction[0] = True # Move forward
-                        
-                        self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
-                        self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1.5*CNT_PER_CM[0])))
-                        self.send_command('BG{}'.format(Motor.X.value))
-                        self.g.GMotionComplete(Motor.X.value)
-                        
-                        # If still at limit, it was actually the forward limit!
-                        if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:
-                            self.current_limits[0] = 1
-                        else:
-                            self.current_limits[0] = 0
-
-                    # Move each axis back a bit
-                    self.movement_direction = [not m for m in HOMING_DIRECTION]
-                    sign = [1 if forward else -1 for forward in self.movement_direction]
-                    self.configure_limits()
-                    
-                    for mi,m in enumerate(AXES_MOTORS):
-                        try:
-                            self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
-                            self.send_command('PR{}={}'.format(m.value, sign[mi]*math.floor(1*CNT_PER_CM[mi])))
-                            self.send_command('BG{}'.format(m.value))
-                        except gclib.GclibError:
-                            pass
-                    
-                    if not self.dummy:
-                        self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
-                    
-                    self.movement_direction = HOMING_DIRECTION[:]
-                    sign = [1 if forward else -1 for forward in self.movement_direction]
-                    self.configure_limits()
-                      
-                    for mi,m in enumerate(AXES_MOTORS):
-                        self.send_command('JG{}={}'.format(m.value, sign[mi]*self.speed[mi]))
-                        self.send_command('BG{}'.format(m.value))
-                    
-                    if self.dummy:
-                        self.stop_code = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
-                    self.status = Status.HOMING
-
-                util.dprint('DMC status change {} > {}'.format(old_status, self.status))
-                
-            except queue.Empty as e:
-                pass
-            except gclib.GclibError as e:
-                msg = traceback.format_exc()
-                self.errors[ErrorType.GCLIB] = msg
-                util.dprint(msg)
-                self.status = Status.ERROR
-            except Exception as e:
-                msg = traceback.format_exc()
-                self.errors[ErrorType.OTHER] = msg
-                util.dprint(msg)
-                self.status = Status.ERROR
-
-            # Need to add except for Gclib ? error
             
-            if self.status is not Status.DISCONNECTED and self.status is not Status.ERROR:
+            if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                self.disable_motors()
+                if self.g is not None:
+                    #self.send_command('DH1') # Enable DHCP
+                    info = self.g.GInfo()
+                    self.g.GClose()
+                    util.dprint('Closed connection to ' + info)
+                
+                self.status = Status.DISCONNECTED
+                self.task = None
+            
+            if r.type == Status.STOP and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
+                    # If motors are disabled, need to use Serve Here command
+                    # to enable, which sets the coordinate system to (0,0,0)
+                    self.send_command('SH')
+                    # Set to None to indicate uncalibrated coordinate system
+                    self.position_cnt = None
+                    self.status = Status.STOP
+                elif self.status == Status.HOMING:
+                    self.send_command('ST')
+                    self.disable_motors()
+                    self.status = Status.MOTORS_DISABLED
+                else:
+                    self.send_command('ST')
+                    self.update_limits()
+                    self.status = Status.STOP
+                    
+                if self.dummy:
+                    self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
+                
+            if r.type == Status.MOTORS_DISABLED and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                self.send_command('ST')
+                self.send_command('MO')
+                self.position_cnt = None
+                self.status = Status.MOTORS_DISABLED
+            
+            if r.type == Status.JOGGING and self.status == Status.STOP:
+                # Only move if not at limit
+                if (r.forward and self.current_limits[r.axis] <= 0) or (not r.forward and self.current_limits[r.axis] >= 0):
+                    self.movement_direction = [0,0,0]
+                    self.movement_direction[r.axis] = r.forward
+                    motor = AXES_MOTORS[r.axis].value
+                    
+                    self.update_limits()
+
+                    sign = 1
+                    if not r.forward:
+                        sign = -1
+                    self.send_command('JG{}={}'.format(motor, 
+                               sign*self.speed[r.axis]))
+                    self.send_command('BG{}'.format(motor))
+                    
+                    if self.dummy:
+                        self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
+                        
+                    self.status = Status.JOGGING
+                
+            if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
+                status = Status.MOVING_RELATIVE
+                dir = []
+                
+                for mi,m in enumerate(AXES_MOTORS):
+                    # If limit is active, check we are moving in the opposite direction
+                    if (r.coord[mi] < 0 and self.current_limits[mi] < 0) or (r.coord[mi] > 0 and self.current_limits[mi] > 0):
+                        status = Status.STOP
+                        break
+                    self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                    self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
+                    
+                    dir.append(r.coord[mi] >= 0)
+                
+                if status == Status.MOVING_RELATIVE:
+                    self.movement_direction = dir
+                    self.configure_limits()
+                    self.send_command('BG')
+                    
+                self.status = status
+            
+            if r.type == Status.MOVING_ABSOLUTE and self.status == Status.STOP:
+                status = Status.MOVING_ABSOLUTE
+                
+                pos = [math.floor(coord*cnt) for coord,cnt in zip(r.coord,CNT_PER_CM)]
+                delta = [stop-start for stop,start in zip(pos, self.position_cnt)]
+                dir = []
+                
+                for mi,m in enumerate(AXES_MOTORS):
+                    # If limit is active, check we are moving in the opposite direction
+                    if (delta[mi] < 0 and self.current_limits[mi] < 0) or (delta[mi] > 0 and self.current_limits[mi] > 0):
+                        status = Status.STOP
+                        break
+                    self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                    self.send_command('PA{}={}'.format(m.value, pos[mi]))
+                    
+                    dir.append(delta[mi] >= 0)
+
+                if status == Status.MOVING_ABSOLUTE:
+                    self.movement_direction = dir
+                    self.configure_limits()
+                    self.send_command('BG')
+                    
+                self.status = status
+                
+            if r.type == Status.HOMING and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                self.send_command('MO') # Disable motors
+                time.sleep(0.5) # Wait a moment
+                self.send_command('SH') # Enable motors
+                self.set_speed(MAX_SPEED/2)
+                
+                # For x axis, need to check which limit we are at
+                if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
+                    # Try moving 1 cm in +X, and see if limit is still active
+                    self.current_limits[0] = -1 # Force movement enabled in +X         
+                    self.movement_direction[0] = True # Move forward
+                    
+                    self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
+                    self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1.5*CNT_PER_CM[0])))
+                    self.send_command('BG{}'.format(Motor.X.value))
+                    self.g.GMotionComplete(Motor.X.value)
+                    
+                    # If still at limit, it was actually the forward limit!
+                    if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:
+                        self.current_limits[0] = 1
+                    else:
+                        self.current_limits[0] = 0
+
+                # Move each axis back a bit
+                self.movement_direction = [not m for m in HOMING_DIRECTION]
+                sign = [1 if forward else -1 for forward in self.movement_direction]
+                self.configure_limits()
+                
+                for mi,m in enumerate(AXES_MOTORS):
+                    try:
+                        self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
+                        self.send_command('PR{}={}'.format(m.value, sign[mi]*math.floor(1*CNT_PER_CM[mi])))
+                        self.send_command('BG{}'.format(m.value))
+                    except gclib.GclibError:
+                        pass
+                
+                if not self.dummy:
+                    self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
+                
+                self.movement_direction = HOMING_DIRECTION[:]
+                sign = [1 if forward else -1 for forward in self.movement_direction]
+                self.configure_limits()
+                  
+                for mi,m in enumerate(AXES_MOTORS):
+                    self.send_command('JG{}={}'.format(m.value, sign[mi]*self.speed[mi]))
+                    self.send_command('BG{}'.format(m.value))
+                
+                if self.dummy:
+                    self.stop_code = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
+                self.status = Status.HOMING
+
+            util.dprint('DMC status change {} > {}'.format(old_status, self.status))
+            
+        except queue.Empty as e:
+            pass
+        except gclib.GclibError as e:
+            msg = traceback.format_exc()
+            self.errors[ErrorType.GCLIB] = msg
+            util.dprint(msg)
+            self.status = Status.ERROR
+        except Exception as e:
+            msg = traceback.format_exc()
+            self.errors[ErrorType.OTHER] = msg
+            util.dprint(msg)
+            self.status = Status.ERROR
+    
+    # Task that runs in background and takes care of DMC control
+    def background_task(self):
+        util.dprint('Started DMC task {}'.format(threading.current_thread()))
+        while True:
+            # Run the loop forever, unless it is no longer referenced (via self.task) or the
+            # DMC becomes not configured
+            if threading.current_thread() != self.task:
+                util.dprint('Ending DMC task {}'.format(threading.current_thread()))
+                return # End this task if it's no longer referenced 
+            
+            old_status = self.status
+            
+            self.process_request()
+            
+            if self.status != Status.DISCONNECTED and self.status != Status.ERROR:
                 try:
                     self.update_position()
                     self.update_stop_code()
@@ -569,8 +584,6 @@ class DMC(object):
                     self.errors[ErrorType.OTHER] = msg
                     util.dprint(msg)
                     self.status = Status.ERROR
-            
-            old_status = self.status
             
             try:
                 if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE or self.status == Status.MOVING_ABSOLUTE:
@@ -617,19 +630,22 @@ class DMC(object):
                 self.errors[ErrorType.OTHER] = msg
                 util.dprint(msg)
                 self.status = Status.ERROR
-
-            if self.status is not old_status:
-                if self.status == Status.ERROR:
+                
+            if self.status == Status.ERROR:
+                try:
+                    self.disable_motors()
+                    pass
+                except gclib.GclibError:
+                    pass
+                if not self.dummy:
                     try:
-                        self.disable_motors()
+                        self.g.GClose()
+                        pass
                     except gclib.GclibError:
                         pass
-                    if not self.dummy:
-                        try:
-                            self.g.GClose()
-                        except gclib.GclibError:
-                            pass
-                    
+                self.task = None
+                
+            if self.status is not old_status:
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
                 
                     
@@ -652,9 +668,11 @@ class DMC(object):
             
     
     def connect(self, ip_address=DEFAULT_IP):
-        ip_address = 'COM4'
         self.request_queue.put(DMCRequest(Status.MOTORS_DISABLED).connect_params(ip_address),
                                False) # False makes it not blocking
+        if self.task == None:
+            self.task = threading.Thread(target = self.background_task)
+            self.task.start()
         
     def disconnect(self):
         self.request_queue.put(DMCRequest(Status.DISCONNECTED), False) # False makes it not blocking
@@ -701,6 +719,6 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
-    d.connect(DEFAULT_IP)
+    #d.connect(DEFAULT_IP)
     #d.connect('COM4')
-    d.stop()
+    #d.stop()
