@@ -49,8 +49,6 @@ class Status(Enum):
     HOMING = 4
     STOP = 5 # Motors are stopped but enabled (drawing current)
     MOTORS_DISABLED = 6 # Motors are disabled (not drawing current)
-    REQUEST_FAIL = 7
-    ERROR = 8
 
 class ErrorType(Enum):
     DMC_VOLTAGE_CURRENT = 'Undervoltage or over current error'
@@ -153,8 +151,8 @@ class DMC(object):
     def clean_up(self):
         try:
             self.disconnect()
-            #while not self.status == Status.DISCONNECTED:
-            #    time.sleep(0.2)
+            while not self.status == Status.DISCONNECTED:
+                time.sleep(0.2)
             
             task = self.task
             self.task = None
@@ -308,9 +306,9 @@ class DMC(object):
     
     def process_request(self):
         try:
-            old_status = self.status
             r = self.request_queue.get(True, 0.02)
             
+            # Request to connect and enter MOTORS_DISABLED state
             if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED: #or self.status == Status.ERROR):
                 connected = False
                 if not self.dummy:
@@ -324,11 +322,13 @@ class DMC(object):
                         
                     except gclib.GclibError:
                         #self.errors[ErrorType.GCLIB] = "Failed to connect"
-                        self.status = Status.ERROR
+                        self.errors[ErrorType.OTHER] = "DMC Connection Failed"
+                        self.status = Status.DISCONNECTED
                     
                 else:
                     connected = True
                 
+                # Do initialization if connection successful
                 if connected:
                     self.ip_address = r.ip
                     self.send_command('RS') # Perform reset to power on condition
@@ -391,18 +391,13 @@ class DMC(object):
                        
                     self.status = Status.MOTORS_DISABLED
             
-            if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
-                self.disable_motors()
-                if self.g is not None:
-                    #self.send_command('DH1') # Enable DHCP
-                    info = self.g.GInfo()
-                    self.g.GClose()
-                    util.dprint('Closed connection to ' + info)
-                
+            # Request to disconnect
+            if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
+                self._disconnect()
                 self.status = Status.DISCONNECTED
-                self.task = None
             
-            if r.type == Status.STOP and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+            # Request stop when connected
+            if r.type == Status.STOP and self.status != Status.DISCONNECTED:
                 if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
                     # If motors are disabled, need to use Serve Here command
                     # to enable, which sets the coordinate system to (0,0,0)
@@ -422,12 +417,14 @@ class DMC(object):
                 if self.dummy:
                     self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
                 
-            if r.type == Status.MOTORS_DISABLED and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+            # Request to disable motors while connected
+            if r.type == Status.MOTORS_DISABLED and self.status != Status.DISCONNECTED:
                 self.send_command('ST')
                 self.send_command('MO')
                 self.position_cnt = None
                 self.status = Status.MOTORS_DISABLED
             
+            # Request to start jogging while stopped
             if r.type == Status.JOGGING and self.status == Status.STOP:
                 # Only move if not at limit
                 if (r.forward and self.current_limits[r.axis] <= 0) or (not r.forward and self.current_limits[r.axis] >= 0):
@@ -448,7 +445,8 @@ class DMC(object):
                         self.stop_code = [StopCode.RUNNING_INDEPENDENT for i in range(3)]
                         
                     self.status = Status.JOGGING
-                
+            
+            # Request to start relative move while stopped
             if r.type == Status.MOVING_RELATIVE and self.status == Status.STOP:
                 status = Status.MOVING_RELATIVE
                 dir = []
@@ -470,6 +468,7 @@ class DMC(object):
                     
                 self.status = status
             
+            # Request absolute move while stopped
             if r.type == Status.MOVING_ABSOLUTE and self.status == Status.STOP:
                 status = Status.MOVING_ABSOLUTE
                 
@@ -493,8 +492,9 @@ class DMC(object):
                     self.send_command('BG')
                     
                 self.status = status
-                
-            if r.type == Status.HOMING and self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+            
+            # Starting homing sequence while not disconnected
+            if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
                 self.send_command('MO') # Disable motors
                 time.sleep(0.5) # Wait a moment
                 self.send_command('SH') # Enable motors
@@ -544,8 +544,6 @@ class DMC(object):
                 if self.dummy:
                     self.stop_code = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
                 self.status = Status.HOMING
-
-            util.dprint('DMC status change {} > {}'.format(old_status, self.status))
             
         except queue.Empty as e:
             pass
@@ -564,28 +562,26 @@ class DMC(object):
     def background_task(self):
         util.dprint('Started DMC task {}'.format(threading.current_thread()))
         while True:
-            # Run the loop forever, unless it is no longer referenced (via self.task) or the
-            # DMC becomes not configured
-            if threading.current_thread() != self.task:
-                util.dprint('Ending DMC task {}'.format(threading.current_thread()))
-                return # End this task if it's no longer referenced 
+            
+            # Record current status to see if it changes during loop iteration
+            old_status = self.status
+            
+            # Process one request from the queue
+            self.process_request()
+            
+            if self.status != old_status:
+                util.dprint('DMC status change {} > {}'.format(old_status, self.status))
             
             old_status = self.status
             
-            self.process_request()
-            
-            if self.status != Status.DISCONNECTED and self.status != Status.ERROR:
-                try:
+            try:
+                # Read updated info from DMC
+                if self.status != Status.DISCONNECTED:
                     self.update_position()
                     self.update_stop_code()
                     self.update_limits()
-                except Exception as e:
-                    msg = traceback.format_exc()
-                    self.errors[ErrorType.OTHER] = msg
-                    util.dprint(msg)
-                    self.status = Status.ERROR
-            
-            try:
+                
+                # If moving (jogging, homing, etc.) check if limit has been reached or movement stopped otherwise
                 if self.status == Status.JOGGING or self.status == Status.MOVING_RELATIVE or self.status == Status.MOVING_ABSOLUTE:
                     if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                         self.status = Status.STOP
@@ -599,8 +595,7 @@ class DMC(object):
                             else:
                                 raise Exception('Unexpected stop code during movement')
                         self.block = False
-                    
-                        
+
                 if self.status == Status.HOMING:
                     if not any([s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]):
                         self.status = Status.STOP
@@ -616,10 +611,11 @@ class DMC(object):
                                 self.send_command('DP{}=0'.format(m.value))
                         self.block = False
                                 
-                if self.status != Status.DISCONNECTED and self.status != Status.ERROR:
+                if self.status != Status.DISCONNECTED:
                     self.update_errors()
                     if len(self.errors) > 0:
-                        self.status = Status.ERROR
+                        self._disconnect()
+                        self.status = Status.DISCONNECTED
 
             except gclib.GclibError as e:
                 msg = traceback.format_exc()
@@ -631,21 +627,14 @@ class DMC(object):
                 util.dprint(msg)
                 self.status = Status.ERROR
                 
-            if self.status == Status.ERROR:
-                try:
-                    self.disable_motors()
-                    pass
-                except gclib.GclibError:
-                    pass
-                if not self.dummy:
-                    try:
-                        self.g.GClose()
-                        pass
-                    except gclib.GclibError:
-                        pass
+            # Run the loop forever, unless it is no longer referenced (via self.task) or the
+            # DMC becomes not configured
+            if self.status == Status.DISCONNECTED or threading.current_thread() != self.task:
                 self.task = None
-                
-            if self.status is not old_status:
+                util.dprint('Ending DMC task {}'.format(threading.current_thread()))
+                return # End this task if it's no longer referenced 
+            
+            if self.status != old_status:
                 util.dprint('DMC status change {} > {}'.format(old_status, self.status))
                 
                     
@@ -674,6 +663,14 @@ class DMC(object):
             self.task = threading.Thread(target = self.background_task)
             self.task.start()
         
+    def _disconnect(self):
+        self.disable_motors()
+        if self.g is not None:
+            #self.send_command('DH1') # Enable DHCP
+            info = self.g.GInfo()
+            self.g.GClose()
+            util.dprint('Closed connection to ' + info)
+
     def disconnect(self):
         self.request_queue.put(DMCRequest(Status.DISCONNECTED), False) # False makes it not blocking
         
