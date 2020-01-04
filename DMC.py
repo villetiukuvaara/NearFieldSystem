@@ -103,6 +103,11 @@ class SpatialSweepParams():
             pos.append(np.linspace(i[0], i[1], i[2]))
                 
         mgrid  = np.meshgrid(pos[0], pos[1], pos[2], sparse=False, indexing='ij')
+        
+        # Sweep back and forth along x rather than starting each row from
+        # the beginning
+        mgrid[0][:, 1::2] = mgrid[0][::-1, 1::2]
+        
         self.grid = [g.flatten('F') for g in mgrid]
     
     def get_num_points(self):
@@ -719,3 +724,4 @@ if __name__ == "__main__":
     #d.connect(DEFAULT_IP)
     #d.connect('COM4')
     #d.stop()
+    #s = SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])
