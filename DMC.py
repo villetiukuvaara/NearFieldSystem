@@ -667,7 +667,9 @@ class DMC(object):
         if self.task == None:
             self.task = threading.Thread(target = self.background_task)
             self.task.start()
-        
+    
+    # Disconnect from DMC
+    # This method is "private"
     def _disconnect(self):
         self.disable_motors()
         if self.g is not None:
@@ -676,26 +678,34 @@ class DMC(object):
             self.g.GClose()
             util.dprint('Closed connection to ' + info)
 
+    # Request to disconnect from the DMC
     def disconnect(self):
         self.request_queue.put(DMCRequest(Status.DISCONNECTED), False) # False makes it not blocking
-        
+    
+    # Request to begin a jogging motion along an axis (0-2) and if the direction is forward (True/False)
     def jog(self, axis, forward):
         self.request_queue.put(DMCRequest(Status.JOGGING).jog_params(axis, forward),
                                False) # False makes it not blocking
     
+    # Request to start homing sequence
     def home(self):
         self.request_queue.put(DMCRequest(Status.HOMING), False)
     
-    
+    # Request to stop motion
     def stop(self):
         self.request_queue.put(DMCRequest(Status.STOP), False)
     
+    # Request to begin a relative movement
+    # Must begin from stopped position
     # move is a vector indicating the relative move in cm
     def move_relative(self, move):
         self.request_queue.put(DMCRequest(Status.MOVING_RELATIVE).move_params(move),
                                False) # False makes it not blocking
     
-     # move is a vector indicating the final position in cm
+    # Request to begin a absolute movement
+    # Must begin from stopped position
+    # move is a vector indicating the final position in cm
+    # This is blocking i.e. waits until motion is over
     def move_absolute_blocking(self, pos, wait):
         self.block = True
         self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
@@ -709,11 +719,14 @@ class DMC(object):
         
         return True
     
+    # Request to begin a absolute movement
+    # Must begin from stopped position
     # move is a vector indicating the final position in cm
     def move_absolute(self, pos):
         self.request_queue.put(DMCRequest(Status.MOVING_ABSOLUTE).move_params(pos),
                                False) # False makes it not blocking
-        
+    
+    # Clear all of the errors
     def clear_errors(self):
         self.errors = {}
         
