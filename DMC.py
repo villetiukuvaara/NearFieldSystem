@@ -340,7 +340,8 @@ class DMC(object):
                     self.send_command('RS') # Perform reset to power on condition
                     time.sleep(0.5)
                     #self.send_command('DH0') # Prevent DHCP from assigning new address while in use
-                    self.send_command('EO0') # Turn off echo
+                    if 'COM' in self.ip_address:
+                        self.send_command('EO0') # Turn off echo if using USB (com port)
 
                     self.errors = {}
                     self.update_errors()
@@ -557,12 +558,14 @@ class DMC(object):
             msg = traceback.format_exc()
             self.errors[ErrorType.GCLIB] = msg
             util.dprint(msg)
-            self.status = Status.ERROR
+            self._disconnect()
+            self.status = Status.DISCONNECTED
         except Exception as e:
             msg = traceback.format_exc()
             self.errors[ErrorType.OTHER] = msg
             util.dprint(msg)
-            self.status = Status.ERROR
+            self._disconnect()
+            self.status = Status.DISCONNECTED
     
     # Task that runs in background and takes care of DMC control
     def background_task(self):
@@ -662,7 +665,7 @@ class DMC(object):
         self.send_command('LD{}=0'.format(Motor.Z.value))
         
         # Set software reverse limit for Z
-        self.send_command('BL{}={}'.format(Motor.Z.value, math.floor(MIN_Z*CNT_PER_CM)))
+        self.send_command('BL{}={}'.format(Motor.Z.value, -math.floor(MIN_Z*CNT_PER_CM[2])))
             
     
     def connect(self, ip_address=DEFAULT_IP):
@@ -739,6 +742,6 @@ if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
     #d.connect(DEFAULT_IP)
-    #d.connect('COM4')
-    #d.stop()
+    d.connect('COM4')
+    d.stop()
     #s = SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])
