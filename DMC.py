@@ -15,6 +15,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 6 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
+MIN_Z = 10 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
 #DEFAULT_IP = 'COM4'
 
@@ -657,8 +658,11 @@ class DMC(object):
         # Both limit switches enabled for Y axis
         self.send_command('LD{}=0'.format(Motor.Y1.value))
         
-        # Only the forward limit switch is enabled for Z
-        self.send_command('LD{}=2'.format(Motor.Z.value))
+        # Both limit switches enabled for Z
+        self.send_command('LD{}=0'.format(Motor.Z.value))
+        
+        # Set software reverse limit for Z
+        self.send_command('BL{}={}'.format(Motor.Z.value, math.floor(MIN_Z*CNT_PER_CM)))
             
     
     def connect(self, ip_address=DEFAULT_IP):
