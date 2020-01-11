@@ -15,7 +15,7 @@ CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 6 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
-MIN_Z = 10 # Position of reverse software reverse limit for Z axis
+MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
 #DEFAULT_IP = 'COM4'
 
