@@ -466,7 +466,8 @@ class VNA():
         for i in ("CHAN1","CHAN2","CHAN3","CHAN4"):
             self.write(i+";AUTO;")
         if not self.dummy:
-            self.vna.query_ascii_values("OPC?;SING;")
+            #self.vna.query_ascii_values("OPC?;SING;")
+            self.vna.query_ascii_values("OPC?;NUMG30;")
 
     def get_freq(self):
         '''
