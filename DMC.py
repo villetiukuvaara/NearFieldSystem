@@ -339,9 +339,10 @@ class DMC(object):
                     self.ip_address = r.ip
                     self.send_command('RS') # Perform reset to power on condition
                     time.sleep(0.5)
-                    #self.send_command('DH0') # Prevent DHCP from assigning new address while in use
                     if 'COM' in self.ip_address:
                         self.send_command('EO0') # Turn off echo if using USB (com port)
+#                    else:
+#                        self.send_command('DH0') # Prevent DHCP from assigning new address while in use
 
                     self.errors = {}
                     self.update_errors()
@@ -464,8 +465,7 @@ class DMC(object):
                         status = Status.STOP
                         break
                     self.send_command('SP{}={}'.format(m.value, self.speed[mi]))
-                    self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))
-                    
+                    self.send_command('PR{}={}'.format(m.value, math.floor(r.coord[mi]*CNT_PER_CM[mi])))                  
                     dir.append(r.coord[mi] >= 0)
                 
                 if status == Status.MOVING_RELATIVE:
@@ -558,8 +558,14 @@ class DMC(object):
             msg = traceback.format_exc()
             self.errors[ErrorType.GCLIB] = msg
             util.dprint(msg)
-            self._disconnect()
-            self.status = Status.DISCONNECTED
+            try:
+                self._disconnect()
+                self.status = Status.DISCONNECTED
+            except Exception as e:
+                util.dprint('Trying again')
+                time.sleep(0.5) # DMC needs to require some delay before responding
+                self._disconnect()
+                self.status = Status.DISCONNECTED
         except Exception as e:
             msg = traceback.format_exc()
             self.errors[ErrorType.OTHER] = msg
@@ -741,7 +747,7 @@ class DMC(object):
 if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
-    #d.connect(DEFAULT_IP)
+    #d.connect('134.117.39.245')
     d.connect('COM4')
     d.stop()
     #s = SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])
