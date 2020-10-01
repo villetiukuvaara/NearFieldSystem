@@ -471,7 +471,9 @@ class DMC(object):
                 if status == Status.MOVING_RELATIVE:
                     self.movement_direction = dir
                     self.configure_limits()
-                    self.send_command('BG')
+                    for mi,m in enumerate(AXES_MOTORS):
+                        if r.coord[mi] != 0:
+                            self.send_command('BG{}'.format(m.value))
                     
                 self.status = status
             
