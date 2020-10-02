@@ -10,7 +10,7 @@ import queue
 import traceback
 import numpy as np
 
-
+MAX_POSITION = []
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 6 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
@@ -19,12 +19,16 @@ MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
 #DEFAULT_IP = 'COM4'
 
+# Set which DMC axes are connected to the physical CNC machine motors
+# Note that Y2 is a made to be a "slave" to Y1 later 
 class Motor(Enum):
     X = 'A'
     Y1 = 'B'
     Y2 = 'C'
     Z = 'D'
 
+# The DMC class supports parallelism and responds to requests that are queued
+# This class is for setting up a request
 class DMCRequest():
     def __init__(self, type):
         self.type = type
@@ -42,6 +46,7 @@ class DMCRequest():
         self.ip = ip
         return self
 
+# DMC class acts as a state machine; here are the possible states
 class Status(Enum):
     DISCONNECTED = 0 # Initial state
     MOVING_RELATIVE = 1
@@ -51,6 +56,7 @@ class Status(Enum):
     STOP = 5 # Motors are stopped but enabled (drawing current)
     MOTORS_DISABLED = 6 # Motors are disabled (not drawing current)
 
+# Errors that the DMC state machine can end up in
 class ErrorType(Enum):
     DMC_VOLTAGE_CURRENT = 'Undervoltage or over current error'
     DMC_HALL = 'Hall error'
@@ -59,6 +65,7 @@ class ErrorType(Enum):
     GCLIB = 'GCLIB'
     OTHER = 'Other error'
 
+# Stop codes for the DMC from the user manual
 class StopCode(Enum):
     RUNNING_INDEPENDENT = 0
     DECEL_STOP_INDEPENDENT = 1
@@ -85,9 +92,13 @@ class StopCode(Enum):
     RUNNING_VECTOR_SEQ = 100
     STOP_VECTOR_SEQ = 101
     NONE = -1
-    
+
+# Parameters to configure a sweep over some grid
+# The usefulness of this class is that it will then return each of the points to 
+# move to in sequence
 class SpatialSweepParams():
     # Params should be a 3 element list (start, stop, points) for each of the axes
+    # e.g. SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])
     def __init__(self, params):
         assert isinstance(params, list) and len(params) == 3
         
@@ -111,6 +122,7 @@ class SpatialSweepParams():
         
         self.grid = [g.flatten('F') for g in mgrid]
     
+    # Total number of points in the grid
     def get_num_points(self):
         return len(self.grid[0])
     
@@ -119,24 +131,33 @@ class SpatialSweepParams():
     def get_coordinate(self, n):
         return[pos[n] for pos in self.grid]
             
-    
+# Order of the axes as indexes e.g. X motor is AXES_MOTORS[AXES['X']]
+# or just AXES_MOTORS[0]
 AXES = {'X': 0, 'Y' : 1, 'Z' : 2}
 AXES_MOTORS = [Motor.X, Motor.Y1, Motor.Z]
-HOMING_DIRECTION = [False, False, True] # Backwards, backwards, forwards
+# The directions of the are backwards, backwards, forwards when the
+# homing sequence is done to find the "origin".
+# E.g. the Z axis needs to go to move "forwards" +Z to the top
+HOMING_DIRECTION = [False, False, True]
+# The stop codes that are expected at the end of the homing sequence (at the "origin")
 HOMING_STOP_CODE = [StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_REV_LIM, StopCode.DECEL_STOP_FWD_LIM]
 
+# DMC class that acts as a state machine for interfacing with the DMC4163
 class DMC(object):
+    # It can be initialized as a "dummy" if no actual DMC is connected, for testing
     def __init__(self, dummy):
         self.dummy = dummy
         self.status = Status.DISCONNECTED
         
+        # Since it supports multithreading, these locks prevent mutliple access
+        # to data and communication with the device
         self.data_lock = threading.RLock()
         self.comm_lock = threading.RLock()
         self.block = False
         
-        self.speed = [0, 0, 0]
+        self.speed = [0,0,0] # Current set speed
         self.position_cnt = None # Do not have position count until homing is done
-        self.current_limits = [0, 0, 0]
+        self.current_limits = [0,0,0]
         self.movement_direction = [0,0,0]
         if self.dummy:
             self.stop_code = [StopCode.DECEL_STOP_ST for a in AXES]
@@ -157,8 +178,10 @@ class DMC(object):
     def clean_up(self):
         try:
             self.disconnect()
-            while not self.status == Status.DISCONNECTED:
-                time.sleep(0.2)
+            
+            for i in range(1,3):
+                if self.status == Status.DISCONNECTED:
+                    time.sleep(0.5)
             
             task = self.task
             self.task = None
@@ -197,15 +220,22 @@ class DMC(object):
         finally:
             self.comm_lock.release()
             
-    def send_command_threaded(self, command):
-        threading.Thread(target = self.send_command, args = (command,)).start()
-        
-    def send_commands_threaded(self, commands):
-        threading.Thread(target = self.send_commands, args = (commands,)).start()
+#    def send_command_threaded(self, command):
+#        threading.Thread(target = self.send_command, args = (command,)).start()
+#        
+#    def send_commands_threaded(self, commands):
+#        threading.Thread(target = self.send_commands, args = (commands,)).start()
         
     def disable_motors(self):
-        self.send_command("MO")
-        util.dprint("Motors disabled")
+        for i in range(1,3):
+            try:
+                self.send_command("MO")
+                util.dprint("Motors disabled")
+            except gclib.GclibError as e:
+                if i == 3:
+                    raise e
+                else:
+                    time.sleep(0.2);
     
     def enable_motors(self):
         self.send_command("SH")
@@ -393,8 +423,7 @@ class DMC(object):
                     if len(self.errors) > 0:
                         # Recover from ELO
                         self.send_command('SH')
-                        time.sleep(0.2)
-                        self.send_command('MO')
+                        self.disable_motors();
                         self.errors = {}
                        
                     self.status = Status.MOTORS_DISABLED
@@ -498,7 +527,9 @@ class DMC(object):
                 if status == Status.MOVING_ABSOLUTE:
                     self.movement_direction = dir
                     self.configure_limits()
-                    self.send_command('BG')
+                    for mi,m in enumerate(AXES_MOTORS):
+                        if r.coord[mi] != 0:
+                            self.send_command('BG{}'.format(m.value))
                     
                 self.status = status
             
@@ -565,7 +596,7 @@ class DMC(object):
                 self.status = Status.DISCONNECTED
             except Exception as e:
                 util.dprint('Trying again')
-                time.sleep(0.5) # DMC needs to require some delay before responding
+                #time.sleep(0.5) # DMC needs to require some delay before responding
                 self._disconnect()
                 self.status = Status.DISCONNECTED
         except Exception as e:
@@ -623,7 +654,7 @@ class DMC(object):
                                  raise Exception('Unexpected stop code during homing')
                         if len(self.errors) == 0:
                             # Set this point as the origin
-                            time.sleep(0.25)
+                            time.sleep(0.5)
                             for mi,m in enumerate(AXES_MOTORS):
                                 self.send_command('DP{}=0'.format(m.value))
                         self.block = False
