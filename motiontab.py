@@ -80,8 +80,8 @@ class MotionTab(tk.Frame):
         
         tk.Label(move_group,text="Speed").pack(side=tk.LEFT)
         self.speed_scale = tk.Scale(move_group,
-                                    from_=DMC.MIN_SPEED,to_=DMC.MAX_SPEED,
-                                    resolution=(DMC.MAX_SPEED-DMC.MIN_SPEED)/4,
+                                    from_=1,to_=4,
+                                    resolution=1,
                                     orient=tk.VERTICAL,
                                     command=self.speed_callback)
         self.speed_scale.pack(side=tk.LEFT)
@@ -335,7 +335,7 @@ class MotionTab(tk.Frame):
             self.dmc.stop()
     
     def speed_callback(self, speed):
-        self.dmc.set_speed(self.speed_scale.get())
+        self.dmc.set_speed((self.speed_scale.get()-1)/3.0*(DMC.MAX_SPEED-DMC.MIN_SPEED) + DMC.MIN_SPEED)
         
     def enable_widgets(self, enabled=True):
         self.disable_widgets = not enabled
