@@ -10,7 +10,6 @@ import queue
 import traceback
 import numpy as np
 
-MAX_POSITION = []
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 10 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
@@ -19,6 +18,7 @@ MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
 LOOP_SLEEP = 0.02
 RETRY_SLEEP = 0.25
+MIN_Z = -25
 #DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors
@@ -205,7 +205,7 @@ class DMC(object):
         self.clean_up()
     
     def send_command(self, command):
-        #util.dprint(command)
+        util.dprint(command)
         self.comm_lock.acquire()
         try:
             if not self.dummy:
@@ -336,13 +336,14 @@ class DMC(object):
             else:
                 raise Exception('Unexpected limit switch condition')
         
+        # Make sure Z axis isn't pass minimum acceptable position
+        if self.position_cnt[2] <= MIN_Z*CNT_PER_CM[2]:
+            lim[2] = -1
+        
         update = self.current_limits == lim
         self.current_limits = lim
         if update:
             self.configure_limits()
-    
-    def max_position(self):
-        return [10, 20, 30];
     
     
     def process_request(self):
@@ -441,14 +442,14 @@ class DMC(object):
             
             # Request stop when connected
             if r.type == Status.STOP and self.status != Status.DISCONNECTED:
-                if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
-                    pass
+                if self.status == Status.MOTORS_DISABLED:
+                    pass # The user should "home" the system because it is not calibrated
                     # If motors are disabled, need to use Serve Here command
                     # to enable, which sets the coordinate system to (0,0,0)
-                    # self.send_command('SH')
+                    #self.send_command('SH')
                     # Set to None to indicate uncalibrated coordinate system
                     #self.position_cnt = None
-                    #self.status = Status.STOP
+                    self.status = Status.STOP
                 elif self.status == Status.HOMING:
                     self.send_command('ST')
                     self.disable_motors()
@@ -711,7 +712,7 @@ class DMC(object):
         self.send_command('LD{}=0'.format(Motor.Z.value))
         
         # Set software reverse limit for Z
-        self.send_command('BL{}={}'.format(Motor.Z.value, -math.floor(MIN_Z*CNT_PER_CM[2])))
+        self.send_command('BL{}={}'.format(Motor.Z.value, math.floor(MIN_Z*CNT_PER_CM[2])))
             
     
     def connect(self, ip_address=DEFAULT_IP):

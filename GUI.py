@@ -36,7 +36,7 @@ class NearFieldGUI:                            # not a widget subbclass
     # Close resources and clean up when exiting
     # This gets called when X is pressed ("WM_DELETE_WINDOW")
     def clean_up(self):
-        util.dprint("Cleaning up")
+        util.dprint("Cleaning up after GUI")
         self.win.config(cursor="wait")
         self.measure_tab.clean_up()
         self.motion_tab.clean_up()
