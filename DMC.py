@@ -12,11 +12,13 @@ import numpy as np
 
 MAX_POSITION = []
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 6 # Max speed in cm/sec
+MAX_SPEED = 10 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
 SLEEP_TIME = 20 # Update every 20 ms
 MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
+LOOP_SLEEP = 0.02
+RETRY_SLEEP = 0.25
 #DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors
@@ -176,17 +178,20 @@ class DMC(object):
         #self.task.start()
 
     def clean_up(self):
+        if self.task != None:
+            try:
+                self.disconnect();
+                # Check several times if the thread is done
+                for i in range(1,5):
+                    if self.task != None:
+                        time.sleep(RETRY_SLEEP)
+                    else:
+                        break;
+            except:
+                pass   
+            
         try:
-            self.disconnect()
-            
-            for i in range(1,3):
-                if self.status == Status.DISCONNECTED:
-                    time.sleep(0.5)
-            
-            task = self.task
-            self.task = None
-            while(task.is_alive()):
-                time.sleep(0.2)
+            self.disable_motors()
         except:
             pass
         
@@ -235,7 +240,7 @@ class DMC(object):
                 if i == 3:
                     raise e
                 else:
-                    time.sleep(0.2);
+                    time.sleep(RETRY_SLEEP);
     
     def enable_motors(self):
         self.send_command("SH")
@@ -342,7 +347,7 @@ class DMC(object):
     
     def process_request(self):
         try:
-            r = self.request_queue.get(True, 0.02)
+            r = self.request_queue.get(True, LOOP_SLEEP)
             
             # Request to connect and enter MOTORS_DISABLED state
             if r.type == Status.MOTORS_DISABLED and self.status == Status.DISCONNECTED: #or self.status == Status.ERROR):
@@ -368,7 +373,7 @@ class DMC(object):
                 if connected:
                     self.ip_address = r.ip
                     self.send_command('RS') # Perform reset to power on condition
-                    time.sleep(0.5)
+                    time.sleep(RETRY_SLEEP)
                     if 'COM' in self.ip_address:
                         self.send_command('EO0') # Turn off echo if using USB (com port)
 #                    else:
@@ -430,18 +435,20 @@ class DMC(object):
             
             # Request to disconnect
             if r.type == Status.DISCONNECTED and self.status != Status.DISCONNECTED:
+                self.send_command('ST')
                 self._disconnect()
                 self.status = Status.DISCONNECTED
             
             # Request stop when connected
             if r.type == Status.STOP and self.status != Status.DISCONNECTED:
                 if self.status == Status.MOTORS_DISABLED: # TODO: Need to delete this after homing works!
+                    pass
                     # If motors are disabled, need to use Serve Here command
                     # to enable, which sets the coordinate system to (0,0,0)
-                    self.send_command('SH')
+                    # self.send_command('SH')
                     # Set to None to indicate uncalibrated coordinate system
-                    self.position_cnt = None
-                    self.status = Status.STOP
+                    #self.position_cnt = None
+                    #self.status = Status.STOP
                 elif self.status == Status.HOMING:
                     self.send_command('ST')
                     self.disable_motors()
@@ -536,9 +543,9 @@ class DMC(object):
             # Starting homing sequence while not disconnected
             if r.type == Status.HOMING and self.status != Status.DISCONNECTED:
                 self.send_command('MO') # Disable motors
-                time.sleep(0.5) # Wait a moment
+                time.sleep(RETRY_SLEEP) # Wait a moment
                 self.send_command('SH') # Enable motors
-                self.set_speed(MAX_SPEED/2)
+                self.set_speed(MAX_SPEED/3)
                 
                 # For x axis, need to check which limit we are at
                 if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
@@ -654,7 +661,7 @@ class DMC(object):
                                  raise Exception('Unexpected stop code during homing')
                         if len(self.errors) == 0:
                             # Set this point as the origin
-                            time.sleep(0.5)
+                            time.sleep(RETRY_SLEEP)
                             for mi,m in enumerate(AXES_MOTORS):
                                 self.send_command('DP{}=0'.format(m.value))
                         self.block = False
@@ -758,7 +765,7 @@ class DMC(object):
                                False) # False makes it not blocking
         sleep = 0
         while self.block:
-            time.sleep(0.1)
+            time.sleep(RETRY_SLEEP)
             sleep += 0.1
             if sleep > wait:
                 return False
