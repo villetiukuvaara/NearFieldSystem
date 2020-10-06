@@ -15,8 +15,8 @@ import numpy as np
 import pickle
 import struct
 
-FREQ_MIN = 26e9 # in Hz
-FREQ_MAX = 40e9 # in Hz
+FREQ_MIN = 0.05e9 # in Hz
+FREQ_MAX = 40.05e9 # in Hz
 POINTS_MIN = 3 # Number of steps
 POINTS_MAX = 1601 # Number of steps
 POINTS_DEFAULT = 101
@@ -165,20 +165,9 @@ class VNA():
         self.display_4_channels()
         #self.sweep()
         
-        cal_data = self.get_calibration_data()
+        self.cal_type = self.get_cal_type()
+        self.cal_ok = (self.cal_type is not None)
         
-        self.cal_type = None
-        self.cal_params = None
-        
-        if CalType.CALIFUL2 in cal_data:
-            self.cal_type = CalType.CALIFUL2
-            self.cal_ok = True
-        elif CalType.CALIS111 in cal_data:
-            self.cal_type = CalType.CALIS111
-            self.cal_ok = True
-        elif CalType.CALIS221 in cal_data:
-            self.cal_type = CalType.CALIS221
-            self.cal_ok = True
     
     def disconnect(self):
         if self.dummy:
@@ -243,6 +232,14 @@ class VNA():
         self.write("S22;")
         self.write("LOGM;")
 
+    def get_cal_type(self):
+        for t in CalType:
+            name = t.name
+            if(bool(int(self.query(name+"?;")))):
+                return t
+        return None
+                
+            
     def get_calibration_data(self):
         data = {}
   
@@ -467,7 +464,7 @@ class VNA():
             self.write(i+";AUTO;")
         if not self.dummy:
             #self.vna.query_ascii_values("OPC?;SING;")
-            self.vna.query_ascii_values("OPC?;NUMG30;")
+            self.vna.query_ascii_values("OPC?;NUMG3;")
 
     def get_freq(self):
         '''
