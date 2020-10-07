@@ -23,6 +23,8 @@ POINTS_DEFAULT = 101
 POINTS = [3, 11, 21, 26, 51, 101, 201, 401, 801, 1601]
 POWER_MIN = -15 # in dBm
 POWER_MAX = -5
+AVERAGING_MIN = 1
+AVERAGING_MAX = 999
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
 
@@ -56,22 +58,23 @@ CHANNELS = {SParam.S11 : 'CHAN1',
 # Should change this so that it has S11, S12, etc. instead of cal_type
 # Save cal type as sepearate field in vna
 class FreqSweepParams():
-    def __init__(self, start, stop, points, power, sparams):
+    def __init__(self, start, stop, points, power, averaging, sparams):
         self.start = start   # Start freq in GHz
         self.stop = stop    # Stop freq in GHz
         self.points = points   # Number of points
         self.power = power    # Power in dBm
+        self.averaging = averaging # Averaging factor
         assert isinstance(sparams, list)
         self.sparams = sparams
     
     def for_sparams(self, sp):
         assert isinstance(sp, list)
-        return FreqSweepParams(self.start, self.stop, self.points, self.power, sp)
+        return FreqSweepParams(self.start, self.stop, self.points, self.power, self.averaging, sp)
     
     def __str__(self):
         sp = " ".join([s.value for s in self.sparams])
-        return "<FreqSweepParams start:{:.3E} stop:{:.3E} points:{:d} power:{:.2f} sp: [{}]".format(
-                self.start, self.stop, self.points, self.power, sp)
+        return "<FreqSweepParams start:{:.3E} stop:{:.3E} points:{:d} power:{:.2f} averaging:{:.0f} sp: [{}]".format(
+                self.start, self.stop, self.points, self.power, self.averaging, sp)
     
     def validation_messages(self, check_sparams=False):
         errors = []
@@ -85,6 +88,8 @@ class FreqSweepParams():
             errors.append("Number of points should be from {} to {}".format(POINTS_MIN, POINTS_MAX));
         if self.power < POWER_MIN or self.power > POWER_MAX:
             errors.append("Power level should be between {} dBm and {} dBm".format(POWER_MIN, POWER_MAX));
+        if self.averaging < AVERAGING_MIN or self.averaging > AVERAGING_MAX:
+            errors.append("Averaging factor should be between {} and {}".format(AVERAGING_MIN, AVERAGING_MAX));
         if len(self.sparams) == 0 and check_sparams:
             errors.append("No S-parameters are selected");
         if len(errors) > 0:

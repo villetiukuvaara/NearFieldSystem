@@ -24,9 +24,9 @@ SLEEP = 100
 PADDING = 5
 FREQ_DECIMALS = 2
 POWER_DECIMALS = 1
-DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f}".format(
+DEFAULT_PARAMS = "{start:.{s1}f} {stop:.{s1}f} {points:.0f} {power:.{s2}f} {averaging:.0f}".format(
                 start=vna.FREQ_MIN/1e9, stop=vna.FREQ_MAX/1e9, points=vna.POINTS_MAX, power=vna.POWER_MIN,
-                s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
+                averaging=vna.AVERAGING_MIN,s1=FREQ_DECIMALS,s2=POWER_DECIMALS).split(" ")
 DEFAULT_ADDRESS = 16
 
 class VNATab(tk.Frame):
@@ -56,7 +56,7 @@ class VNATab(tk.Frame):
         self.gpib_string = tk.StringVar()
         
         self.gpib_entry = tk.Entry(gpib_group, textvariable=self.gpib_string, validate="key",
-                                   validatecommand=(self.register(self.validate_entry), "%P", False), width=3)
+                                   validatecommand=(self.register(self.validate_num), "%P", False), width=3)
         self.gpib_entry.pack(side=tk.LEFT)
         self.gpib_string.set("{}".format(DEFAULT_ADDRESS))
         tk.Label(gpib_group, text="::INSTR").pack(side=tk.LEFT)
@@ -95,6 +95,7 @@ class VNATab(tk.Frame):
         tk.Label(config_meas_group,text="Stop (GHz)").grid(row=n+1,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Number of points").grid(row=n+2,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         tk.Label(config_meas_group,text="Power (dB)").grid(row=n+3,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
+        tk.Label(config_meas_group,text="Averaging factor").grid(row=n+4,column=1,padx=PADDING,pady=PADDING,sticky=tk.E)
         
         self.entry_strings = {}
         self.entries = []
@@ -102,17 +103,23 @@ class VNATab(tk.Frame):
         self.step_labels = []
         validation_decimals = [True, True, False]
         
-        for i,pos in enumerate(['start','stop','points','power']):
-            self.entry_strings[pos] = tk.StringVar()
+        for i,pos in enumerate(['start','stop','points','power','averaging']):
+            
 #            self.entry_strings[i].set(
 #                    format_str[i].format(MotionTab.DEFAULT_VALS[ax][pos_n]))
             if pos == 'points':
                 self.points = tk.ttk.Combobox(config_meas_group, values=vna.POINTS, width=5)
                 self.entries.append(self.points)
                 self.points.set(vna.POINTS_DEFAULT)
-            else:
+            elif pos == 'averaging':
+                self.entry_strings[pos] = tk.StringVar()
                 self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[pos], validate="key",
-                                             width=7, validatecommand=(self.register(self.validate_entry), "%P", True)))
+                                             width=7, validatecommand=(self.register(self.validate_num), "%P", False)))
+                self.entry_strings[pos].set(DEFAULT_PARAMS[i])
+            else:
+                self.entry_strings[pos] = tk.StringVar()
+                self.entries.append(tk.Entry(config_meas_group, textvariable=self.entry_strings[pos], validate="key",
+                                             width=7, validatecommand=(self.register(self.validate_num), "%P", True)))
                 self.entry_strings[pos].set(DEFAULT_PARAMS[i])
             self.entries[i].grid(row=i+n,column=2,padx=PADDING,pady=PADDING)
         
@@ -132,6 +139,7 @@ class VNATab(tk.Frame):
             stop = float(self.entry_strings['stop'].get())*1e9
             points = int(self.points.get())
             power = float(self.entry_strings['power'].get())
+            averaging = int(self.entry_strings['averaging'].get())
             params = []
             
             for sp,val in self.sparams.items():
@@ -142,11 +150,11 @@ class VNATab(tk.Frame):
             return None
         
         try:
-            return vna.FreqSweepParams(start, stop, points, power, params)
+            return vna.FreqSweepParams(start, stop, points, power, averaging, params)
         except AssertionError:
             return None
     
-    def validate_entry(self, P, decimals):
+    def validate_num(self, P, decimals):
         if decimals == "True":
             m = re.match("^-?([0-9]*)(\.?[0-9]*)?$", P)
             try:
