@@ -140,6 +140,7 @@ class VNA():
         self.connected = False
         self.cal_type = None
         self.cal_params = None
+        self.averaging_factor = 1
         
         self.rm=None
         self.vna=None
@@ -193,10 +194,10 @@ class VNA():
         self.cal_params = None
         
     def write(self, msg):
-#        if(len(msg) < 200):
-#            util.dprint(msg)
-#        else:
-#            util.dprint(msg[0:30] + " ...")
+        if(len(msg) < 200):
+            util.dprint(msg)
+        else:
+            util.dprint(msg[0:30] + " ...")
         if not self.dummy:
             self.vna.write(msg)
             
@@ -207,10 +208,10 @@ class VNA():
             return self.vna.read()
     
     def query(self, msg):
-#        if(len(msg) < 200):
-#            util.dprint(msg)
-#        else:
-#            util.dprint(msg[0:30] + " ...")
+        if(len(msg) < 200):
+            util.dprint(msg)
+        else:
+            util.dprint(msg[0:30] + " ...")
         if self.dummy:
             return "1"
         else:
@@ -443,11 +444,13 @@ class VNA():
         return self.cal_params
 
     def set_sweep_params(self, sweep_params):
+        assert isinstance(sweep_params, FreqSweepParams)
         #self.measurement_params = sweep_params
         self.write("STAR {a:.{b}f}GHz;".format(a = sweep_params.start/1e9, b = FREQ_DECIMALS))
         self.write("STOP {a:.{b}f}GHz;".format(a = sweep_params.stop/1e9, b = FREQ_DECIMALS))
         self.write("POIN {a:d};".format(a = sweep_params.points))
         self.write("POWE {a:.{b}f};".format(a = sweep_params.power,  b = POWER_DECIMALS))
+        self.averaging_factor = sweep_params.averaging
     
     def get_sweep_params(self):
         start = float(self.query("STAR?;"))
@@ -458,7 +461,7 @@ class VNA():
         if self.dummy and isinstance(self.cal_params, FreqSweepParams):
             return self.cal_params
         
-        return FreqSweepParams(start, stop, points, power, [])
+        return FreqSweepParams(start, stop, points, power, self.averaging_factor, [])
 
     def sweep(self):
         '''
@@ -467,9 +470,19 @@ class VNA():
         self.write("CONT;")
         for i in ("CHAN1","CHAN2","CHAN3","CHAN4"):
             self.write(i+";AUTO;")
+            if self.averaging_factor < 2:
+                self.write("AVEROOFF;")
+            else:
+                self.write("AVERFACT{};".format(self.averaging_factor))
+                self.write("AVEROON;")
+                
         if not self.dummy:
             #self.vna.query_ascii_values("OPC?;SING;")
-            self.vna.query_ascii_values("OPC?;NUMG3;")
+            if self.averaging_factor < 2:
+                self.query("OPC?;SING;")
+            else:
+                self.query("OPC?;NUMG{};".format(self.averaging_factor))
+            
 
     def get_freq(self):
         '''
@@ -578,4 +591,6 @@ class MeasData():
 if __name__ == "__main__":
     util.debug_messages = True
     v = VNA(False)
-    #v.connect(16)
+    v.connect(16)
+    v.set_sweep_params(FreqSweepParams(0.05, 40.05, 801, -10, 1, []))
+    
