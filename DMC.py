@@ -21,7 +21,7 @@ DEFAULT_IP = '134.117.39.147'
 LOOP_SLEEP = 0.02
 RETRY_SLEEP = 0.25
 MIN_Z = -25 # Minimum position on Z axis
-MAX_Y = 30 # Maximum position on Y axis
+MAX_Y = 10 # Maximum position on Y axis
 #DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors
@@ -332,6 +332,10 @@ class DMC(object):
             if mi == 0:
                 if lf == 1:
                     lim[mi] = 0
+#                elif self.movement_direction[0] > 0:
+#                    lim[mi] = 1
+#                else:
+#                    lim[mi] = -1
             elif lf == 0 and lr == 1:
                 lim[mi] = 1 # Forward limit reached
             elif lf == 1 and lr == 0:
@@ -339,7 +343,7 @@ class DMC(object):
             elif lf == 1 and lr == 1:
                 lim[mi] = 0
             else:
-                raise Exception('Unexpected limit switch condition')
+                raise Exception('Unexpected limit switch condition + axis {}'.format(mi))
         
         # Make sure Z axis isn't past minimum acceptable position
         if self.position_cnt[2] <= MIN_Z*CNT_PER_CM[2]:
@@ -440,6 +444,9 @@ class DMC(object):
                         self.send_command('SH')
                         self.disable_motors();
                         self.errors = {}
+                        
+#                    self.movement_direction = [1,1,1]
+#                    self.configure_limits()
                        
                     self.status = Status.MOTORS_DISABLED
             
@@ -483,7 +490,7 @@ class DMC(object):
                 # Only move if not at limit
                 if (r.forward and self.current_limits[r.axis] <= 0) or (not r.forward and self.current_limits[r.axis] >= 0):
                     self.movement_direction = [0,0,0]
-                    self.movement_direction[r.axis] = r.forward
+                    self.movement_direction[r.axis] = 1 if r.forward else -1
                     motor = AXES_MOTORS[r.axis].value
                     
                     self.update_limits()
@@ -515,7 +522,7 @@ class DMC(object):
                     dir.append(r.coord[mi] >= 0)
                 
                 if status == Status.MOVING_RELATIVE:
-                    self.movement_direction = dir
+                    self.movement_direction = 1 if dir else -1
                     self.configure_limits()
                     for mi,m in enumerate(AXES_MOTORS):
                         if r.coord[mi] != 0:
@@ -542,7 +549,7 @@ class DMC(object):
                     dir.append(delta[mi] >= 0)
 
                 if status == Status.MOVING_ABSOLUTE:
-                    self.movement_direction = dir
+                    self.movement_direction = 1 if dir else -1
                     self.configure_limits()
                     for mi,m in enumerate(AXES_MOTORS):
                         if r.coord[mi] != 0:
@@ -561,7 +568,7 @@ class DMC(object):
                 if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
                     # Try moving 1 cm in +X, and see if limit is still active
                     self.current_limits[0] = -1 # Force movement enabled in +X         
-                    self.movement_direction[0] = True # Move forward
+                    self.movement_direction[0] = 1 # Move forward
                     
                     self.send_command('SP{}={}'.format(Motor.X.value, self.speed[0]))
                     self.send_command('PR{}={}'.format(Motor.X.value, math.floor(1.5*CNT_PER_CM[0])))
@@ -575,7 +582,7 @@ class DMC(object):
                         self.current_limits[0] = 0
 
                 # Move each axis back a bit
-                self.movement_direction = [not m for m in HOMING_DIRECTION]
+                self.movement_direction = [-1 if m else 1 for m in HOMING_DIRECTION]
                 sign = [1 if forward else -1 for forward in self.movement_direction]
                 self.configure_limits()
                 
@@ -590,12 +597,11 @@ class DMC(object):
                 if not self.dummy:
                     self.g.GMotionComplete(''.join([Motor.X.value, Motor.Y1.value, Motor.Z.value]))
                 
-                self.movement_direction = HOMING_DIRECTION[:]
-                sign = [1 if forward else -1 for forward in self.movement_direction]
+                self.movement_direction = [1 if m else -1 for m in HOMING_DIRECTION]
                 self.configure_limits()
                   
                 for mi,m in enumerate(AXES_MOTORS):
-                    self.send_command('JG{}={}'.format(m.value, sign[mi]*self.speed[mi]))
+                    self.send_command('JG{}={}'.format(m.value, self.movement_direction[mi]*self.speed[mi]))
                     self.send_command('BG{}'.format(m.value))
                 
                 if self.dummy:
@@ -608,6 +614,7 @@ class DMC(object):
             msg = traceback.format_exc()
             self.errors[ErrorType.GCLIB] = msg
             util.dprint(msg)
+            util.dprint("limits = " + str(self.current_limits))
             try:
                 self._disconnect()
                 self.status = Status.DISCONNECTED
@@ -690,7 +697,8 @@ class DMC(object):
                 msg = traceback.format_exc()
                 self.errors[ErrorType.OTHER] = msg
                 util.dprint(msg)
-                self.status = Status.ERROR
+                self._disconnect()
+                self.status = Status.DISCONNECTED
                 
             # Run the loop forever, unless it is no longer referenced (via self.task) or the
             # DMC becomes not configured
@@ -709,8 +717,8 @@ class DMC(object):
         # is no longer active
         if self.current_limits[0] != 0:
             self.send_command('LD{}=3'.format(Motor.X.value))
-        elif self.movement_direction[0]:
-             self.send_command('LD{}=2'.format(Motor.X.value)) # reverse limit switch disabled
+        elif self.movement_direction[0] > 0:
+            self.send_command('LD{}=2'.format(Motor.X.value)) # reverse limit switch disabled
         else:
             self.send_command('LD{}=1'.format(Motor.X.value)) # forward limit switch disabled
         
@@ -803,5 +811,33 @@ if __name__ == "__main__":
     #d.connect('134.117.39.245')
     d.connect('COM4')
     #d.stop()
-    d.home()
+    d.home();
+    while d.status is not Status.STOP:
+        time.sleep(0.5)
+    time.sleep(1);
+#    d.set_speed(0.5);
+#    d.jog(1,True);
+#    time.sleep(1);
+#    d.stop();
+    if False:
+        d.set_speed(1);
+        d.set_speed(6);
+        
+        d.jog(1,True);
+        d.jog(0,True)
+        d.stop()
+        
+        util.dprint("Current limits = " + str(d.current_limits))
+        
+        while d.status is not Status.STOP:
+            time.sleep(0.5)
+        
+        
+        time.sleep(1)
+        util.dprint("Current limits 2 = " + str(d.current_limits))
+    
+        d.stop()
+        d.jog(0,True)
+        time.sleep(1)
+        d.stop()
     #s = SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])
