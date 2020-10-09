@@ -11,14 +11,17 @@ import traceback
 import numpy as np
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 10 # Max speed in cm/sec
+MAX_SPEED = 15 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
+CAL_SPEED = 5
+CAL_SPEED_Z = 2
 SLEEP_TIME = 20 # Update every 20 ms
 MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
 LOOP_SLEEP = 0.02
 RETRY_SLEEP = 0.25
-MIN_Z = -25
+MIN_Z = -25 # Minimum position on Z axis
+MAX_Y = 120 # Maximum position on Y axis
 #DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors
@@ -336,9 +339,13 @@ class DMC(object):
             else:
                 raise Exception('Unexpected limit switch condition')
         
-        # Make sure Z axis isn't pass minimum acceptable position
+        # Make sure Z axis isn't past minimum acceptable position
         if self.position_cnt[2] <= MIN_Z*CNT_PER_CM[2]:
             lim[2] = -1
+            
+        # Make sure Y axis isn't past maximum acceptable position
+        if self.position_cnt[1] >= MAX_Y*CNT_PER_CM[1]:
+            lim[1] = 1
         
         update = self.current_limits == lim
         self.current_limits = lim
@@ -546,7 +553,8 @@ class DMC(object):
                 self.send_command('MO') # Disable motors
                 time.sleep(RETRY_SLEEP) # Wait a moment
                 self.send_command('SH') # Enable motors
-                self.set_speed(MAX_SPEED/3)
+                self.set_speed(CAL_SPEED)
+                self.speed[2] = math.floor(abs(CAL_SPEED_Z*CNT_PER_CM[2]))
                 
                 # For x axis, need to check which limit we are at
                 if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
@@ -713,6 +721,9 @@ class DMC(object):
         
         # Set software reverse limit for Z
         self.send_command('BL{}={}'.format(Motor.Z.value, math.floor(MIN_Z*CNT_PER_CM[2])))
+        
+        # Set software forward limit for Y
+        self.send_command('FL{}={}'.format(Motor.Y1.value, math.floor(MAX_Y*CNT_PER_CM[1])))
             
     
     def connect(self, ip_address=DEFAULT_IP):
