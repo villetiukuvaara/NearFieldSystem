@@ -11,10 +11,10 @@ import traceback
 import numpy as np
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
-MAX_SPEED = 15 # Max speed in cm/sec
+MAX_SPEED = 6 # Max speed in cm/sec
 MIN_SPEED = 0.5 # Min speed in cm/sec
+Z_SPEED_FACTOR = 0.33
 CAL_SPEED = 5
-CAL_SPEED_Z = 2
 SLEEP_TIME = 20 # Update every 20 ms
 MIN_Z = 35 # Position of reverse software reverse limit for Z axis
 DEFAULT_IP = '134.117.39.147'
@@ -256,6 +256,8 @@ class DMC(object):
             
         for mi,m in enumerate(AXES_MOTORS):
             self.speed[mi] = math.floor(abs(speed*CNT_PER_CM[mi]))
+        
+        self.speed[2] = self.speed[2]*Z_SPEED_FACTOR
     
     # Set acceleration in cm/s^2
 #    def set_acceleration(self, acc):
@@ -485,7 +487,7 @@ class DMC(object):
                     motor = AXES_MOTORS[r.axis].value
                     
                     self.update_limits()
-
+                    
                     sign = 1
                     if not r.forward:
                         sign = -1
@@ -554,7 +556,6 @@ class DMC(object):
                 time.sleep(RETRY_SLEEP) # Wait a moment
                 self.send_command('SH') # Enable motors
                 self.set_speed(CAL_SPEED)
-                self.speed[2] = math.floor(abs(CAL_SPEED_Z*CNT_PER_CM[2]))
                 
                 # For x axis, need to check which limit we are at
                 if float(self.send_command('MG_LF{}'.format(Motor.X.value))) == 0:  # Limit active 
@@ -801,5 +802,6 @@ if __name__ == "__main__":
     d = DMC(False)
     #d.connect('134.117.39.245')
     d.connect('COM4')
-    d.stop()
+    #d.stop()
+    d.home()
     #s = SpatialSweepParams([[1,3,3],[4,6,3],[1,1,1]])

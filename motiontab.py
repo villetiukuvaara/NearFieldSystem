@@ -329,7 +329,6 @@ class MotionTab(tk.Frame):
             return
 
         if press:
-            self.dmc.set_speed(self.speed_scale.get())
             self.dmc.jog(DMC.AXES[axis], forward)
         else:
             self.dmc.stop()
