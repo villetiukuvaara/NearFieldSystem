@@ -12,7 +12,7 @@ import numpy as np
 
 CNT_PER_CM = [4385, 4385, 12710] # Stepper motor counts per cm for each axis
 MAX_SPEED = 6 # Max speed in cm/sec
-MIN_SPEED = 0.5 # Min speed in cm/sec
+MIN_SPEED = 0.2 # Min speed in cm/sec
 Z_SPEED_FACTOR = 0.33
 CAL_SPEED = 5
 SLEEP_TIME = 20 # Update every 20 ms
@@ -21,7 +21,7 @@ DEFAULT_IP = '134.117.39.147'
 LOOP_SLEEP = 0.02
 RETRY_SLEEP = 0.25
 MIN_Z = -25 # Minimum position on Z axis
-MAX_Y = 120 # Maximum position on Y axis
+MAX_Y = 30 # Maximum position on Y axis
 #DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors

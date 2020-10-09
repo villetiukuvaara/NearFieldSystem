@@ -20,7 +20,7 @@ class MotionTab(tk.Frame):
     MAX_STEPS = 999 # Maximum number of steps
     
     # DEFAULT_VALS[AXIS][POS]
-    DEFAULT_VALS = {'X':[50.3,50.3,1], 'Y':[20,37,20], 'Z':[-26,-26,1]}
+    DEFAULT_VALS = {'X':[10,30,5], 'Y':[10,30,5], 'Z':[-5, -5 ,1]}
     POS_FORMAT = '{:.3f}'
     POINTS_FORMAT = '{:.0f}'
     STEP_FORMAT = '{:8.3f}'
@@ -329,6 +329,7 @@ class MotionTab(tk.Frame):
             return
 
         if press:
+            self.speed_callback(None)
             self.dmc.jog(DMC.AXES[axis], forward)
         else:
             self.dmc.stop()
