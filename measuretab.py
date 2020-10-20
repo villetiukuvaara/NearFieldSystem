@@ -1,7 +1,8 @@
+"""
+GUI tab for starting and monitoring the measurement.
 
-GUI tab for configuring the spatial measurement region
-
-Written by Ville Tiukuvaara
+Written by Ville Tiukuvaara.
+"""
 
 import tkinter as tk
 from tkinter import ttk
