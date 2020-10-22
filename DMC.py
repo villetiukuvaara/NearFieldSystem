@@ -449,6 +449,7 @@ class DMC(object):
         update = self.current_limits == lim
         self.current_limits = lim
         if update:
+            util.dprint("limits: " + str(lim));
             self.configure_limits()
 
     def process_request(self):
@@ -795,7 +796,8 @@ class DMC(object):
                                 self.stop_code[mi] == StopCode.DECEL_STOP_ST
                                 or self.stop_code[mi] == StopCode.DECEL_STOP_INDEPENDENT
                             ):
-                                self.current_limits[mi] = 0
+                                if self.movement_direction[mi] != 0:
+                                    self.current_limits[mi] = 0
                             else:
                                 raise Exception("Unexpected stop code during movement")
                         self.block = False
@@ -853,7 +855,8 @@ class DMC(object):
         # If at X axis limit, must disable both because they use the same sensor
         # and motion cannot start! It should be re-enabled as soon as the switch
         # is no longer active
-        if self.current_limits[0] != 0:
+        
+        if self.current_limits[0] != 0 and self.movement_direction[0] != 0:
             self.send_command("LD{}=3".format(Motor.X.value))
         elif self.movement_direction[0]:
             self.send_command(
