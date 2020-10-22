@@ -451,10 +451,11 @@ class MotionTab(tk.Frame):
 
         Speed should be an integer from 1 (min speed) to 4 (max speed)
         """
-        self.dmc.set_speed(
-            (self.speed_scale.get() - 1) / 3.0 * (DMC.MAX_SPEED - DMC.MIN_SPEED)
-            + DMC.MIN_SPEED
-        )
+        self.dmc.set_speed(self.get_speed())
+    
+    def get_speed(self):
+        """Returns the speed currently set on the slider."""
+        return (self.speed_scale.get() - 1) / 3.0 * (DMC.MAX_SPEED - DMC.MIN_SPEED) + DMC.MIN_SPEED
 
     def enable_widgets(self, enabled=True):
         """Enables/disables all the widgets."""

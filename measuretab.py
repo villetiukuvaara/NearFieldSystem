@@ -368,6 +368,7 @@ class MeasureTab(tk.Frame):
             p = self.spatial_sweep.get_coordinate(self.n)
             util.dprint('Move to {}'.format(p))
 
+            self.dmc.set_speed(self.motion_tab.get_speed())
             # Wait up to 180 seconds for move, otherwise error
             if not self.dmc.move_absolute_blocking(p, 180):
                 self.dmc.disable_motors()

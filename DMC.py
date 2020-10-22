@@ -32,7 +32,7 @@ DEFAULT_IP = "134.117.39.147"  # What IP address to connect to by default
 LOOP_SLEEP = 0.02  # Update every 20 ms
 RETRY_SLEEP = 0.25  # If something fails, sleep this long before retrying
 MIN_Z = -25  # Minimum position on Z axis
-MAX_Y = 30  # Maximum position on Y axis
+MAX_Y = 40  # Maximum position on Y axis
 # DEFAULT_IP = 'COM4'
 
 # Set which DMC axes are connected to the physical CNC machine motors
