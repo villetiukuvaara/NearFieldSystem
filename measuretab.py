@@ -421,7 +421,7 @@ class MeasureTab(tk.Frame):
                 return # No data to write out
 
             # Write header
-            header = ['X', 'Y', 'Z', 'S-parameter', 'Frequency']
+            header = ['X', 'Y', 'Z', 'S-parameter', 'Frequency','Magnitude','Phase']
             writer.writerow(header)
 
             for pos,sp_sweep in self.data.items():
