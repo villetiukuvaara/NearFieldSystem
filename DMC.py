@@ -449,7 +449,6 @@ class DMC(object):
         update = self.current_limits == lim
         self.current_limits = lim
         if update:
-            util.dprint("limits: " + str(lim));
             self.configure_limits()
 
     def process_request(self):

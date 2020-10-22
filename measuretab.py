@@ -167,10 +167,8 @@ class MeasureTab(tk.Frame):
             if self.status == Status.NOT_READY:
                 self.status = Status.READY
         else:
-            if self.status != Status.MEASURING:
+            if self.status != Status.MEASURING and self.status != Status.PAUSED:
                 self.status = Status.NOT_READY
-
-        # Update GUI on background thread
         self.update = True
 
     def _update_widgets(self):
