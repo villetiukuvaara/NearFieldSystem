@@ -7,7 +7,7 @@ Manual.
 
 Written by Ville Tiukuvaara
 """
-import visa
+import pyvisa as visa
 from pyvisa.resources import MessageBasedResource
 import myNumbers
 from enum import Enum
@@ -71,8 +71,8 @@ class SParam(Enum):
 # Connect each S-param to a VNA channel
 CHANNELS = {
     SParam.S11: "CHAN1",
-    SParam.S12: "CHAN2",
-    SParam.S21: "CHAN3",
+    SParam.S12: "CHAN3",
+    SParam.S21: "CHAN2",
     SParam.S22: "CHAN4",
 }
 
