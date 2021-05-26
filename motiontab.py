@@ -20,7 +20,7 @@ class MotionTab(tk.Frame):
     MAX_STEPS = 999  # Maximum number of steps
 
     # Default values for spatial sweep
-    DEFAULT_VALS = {"X": [10, 30, 5], "Y": [10, 30, 5], "Z": [-5, -5, 1]}
+    DEFAULT_VALS = {"X": [1, 37, 18], "Y": [2, 38, 18], "Z": [0, 0, 1]}
     # Formatting strings for numbers in GUI
     POS_FORMAT = "{:.3f}"
     POINTS_FORMAT = "{:.0f}"
