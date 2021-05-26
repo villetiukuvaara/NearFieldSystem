@@ -698,7 +698,7 @@ class DMC(object):
                 sign = [1 if forward else -1 for forward in self.movement_direction]
                 self.configure_limits()
 
-                for mi, m in enumerate(AXES_MOTORS):
+                for mi, m in enumerate([Motor.X, Motor.Y1]):
                     try:
                         self.send_command("SP{}={}".format(m.value, self.speed[mi]))
                         self.send_command(
@@ -712,14 +712,14 @@ class DMC(object):
 
                 if not self.dummy:
                     self.g.GMotionComplete(
-                        "".join([Motor.X.value, Motor.Y1.value, Motor.Z.value])
+                        "".join([Motor.X.value, Motor.Y1.value])
                     )
 
                 self.movement_direction = HOMING_DIRECTION[:]
                 sign = [1 if forward else -1 for forward in self.movement_direction]
                 self.configure_limits()
 
-                for mi, m in enumerate(AXES_MOTORS):
+                for mi, m in enumerate([Motor.X, Motor.Y1]):
                     self.send_command(
                         "JG{}={}".format(m.value, sign[mi] * self.speed[mi])
                     )
@@ -806,7 +806,7 @@ class DMC(object):
                         [s is StopCode.RUNNING_INDEPENDENT for s in self.stop_code]
                     ):
                         self.status = Status.STOP
-                        for mi, m in enumerate(AXES_MOTORS):
+                        for mi, m in enumerate([Motor.X, Motor.Y1]):
                             if self.stop_code[mi] == HOMING_STOP_CODE[mi]:
                                 self.current_limits[mi] = (
                                     1 if HOMING_DIRECTION[mi] else -1
@@ -990,5 +990,5 @@ if __name__ == "__main__":
     util.debug_messages = True
     d = DMC(False)
     # d.connect('134.117.39.245')
-    d.connect("COM4")
+    d.connect("COM3")
     d.home()
