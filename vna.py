@@ -70,9 +70,9 @@ class SParam(Enum):
 
 # Connect each S-param to a VNA channel
 CHANNELS = {
-    SParam.S11: "CHAN1",
-    SParam.S12: "CHAN3",
-    SParam.S21: "CHAN2",
+    SParam.S11: "CHAN3",
+    SParam.S12: "CHAN2",
+    SParam.S21: "CHAN1",
     SParam.S22: "CHAN4",
 }
 
@@ -250,7 +250,7 @@ class VNA:
                 return False
 
         # Configure display immediately upon connecting
-        self.display_4_channels()
+        self.display_1_channel()
 
         self.cal_type = self.get_cal_type()
         self.cal_ok = self.cal_type is not None
@@ -308,7 +308,7 @@ class VNA:
         self.write("DUACON;")
         self.write("SPLID4;")
         self.write("OPC?;WAIT;")
-        self.write("{};AUTO;".format(CHANNELS[SParam.S11]))
+        self.write("{};AUTO;".format(CHANNELS[SParam.S21]))
         self.write("S11;")
         self.write("AUXCON;")
         self.write("LOGM;")
@@ -321,6 +321,16 @@ class VNA:
         self.write("LOGM;")
         self.write("{};AUTO;".format(CHANNELS[SParam.S22]))
         self.write("S22;")
+        self.write("LOGM;")
+        
+    def display_1_channel(self):
+        """Display just S21 on channel 1."""
+        self.write("DUACOFF;")
+        self.write("SPLID1;")
+        self.write("OPC?;WAIT;")
+        self.write("{};AUTO;".format(CHANNELS[SParam.S21]))
+        self.write("S21;")
+        self.write("AUXCOFF;")
         self.write("LOGM;")
 
     def get_cal_type(self):
@@ -580,14 +590,14 @@ class VNA:
 
     def sweep(self):
         """Triggers a sweep (with averging if selected)."""
-        self.write("CONT;")
-        for i in ("CHAN1", "CHAN2", "CHAN3", "CHAN4"):
-            self.write(i + ";AUTO;")
-            if self.averaging_factor < 2:
-                self.write("AVEROOFF;")
-            else:
-                self.write("AVERFACT{};".format(self.averaging_factor))
-                self.write("AVEROON;")
+        self.write("CONT;")    
+        i = "CHAN1"
+        self.write(i + ";AUTO;")
+        if self.averaging_factor < 2:
+            self.write("AVEROOFF;")
+        else:
+            self.write("AVERFACT{};".format(self.averaging_factor))
+            self.write("AVEROON;")
 
         if not self.dummy:
             # self.vna.query_ascii_values("OPC?;SING;")
@@ -690,9 +700,9 @@ class VNA:
         data = []
 
         for sp in sweep_params.sparams:
-            mag = self.get_mag(CHANNELS[sp])
             phase = self.get_phase(CHANNELS[sp])
-
+            mag = self.get_mag(CHANNELS[sp])
+            
             # For a dummy object, generate random data
             if self.dummy:
                 diff = max(freq) - min(freq)
@@ -743,4 +753,4 @@ if __name__ == "__main__":
     util.debug_messages = True
     v = VNA(False)
     v.connect(16)
-    v.set_sweep_params(FreqSweepParams(0.05, 40.05, 801, -10, 1, []))
+    v.set_sweep_params(FreqSweepParams(20e9, 30e9, 801, -10, 1, []))
