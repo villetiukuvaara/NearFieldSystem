@@ -53,7 +53,7 @@ Please note that the following diagram is meant to give a rough idea, and doesn'
                                GUI                   Hardware Instrument            
                             Components                     Wrappers                 
 
-# Dependencies
+## Dependencies
 
 The code is written in Python 3 and requires the following libraries:
 
@@ -66,3 +66,7 @@ The code is written in Python 3 and requires the following libraries:
 The last item, `gclib`, requires a two-step installation. After installing the [standard gclib](https://www.galil.com/sw/pub/all/doc/gclib/html/windows.html), the [language support for Python](https://www.galil.com/sw/pub/all/doc/gclib/html/python.html) needs to be installed, which provides the `gclib` Python package.
 
 For the other Python libraries, it may be convient to use a package manager such as [Anaconda](https://www.anaconda.com/products/individual).
+
+## Starting the Code
+
+The main file of the code is `GUI.py`. Running this file in Python starts the GUI.
