@@ -16,8 +16,8 @@ This program is designed to allow for near-field measurements where the electric
 
 The software primarily controls two pieces of hardware, and has not been designed to be compatible with other versions:
 
- 1. Agilent/Keysight 8722ES VNA (50 MHz to 40 GHz)
- 2. Galil DMC4163 (digital motion controller than can control 4 stepper motors)
+ 1. [Agilent/Keysight 8722ES VNA](https://www.keysight.com/ca/en/product/8722ES/sparameter-vector-network-analyzer-40-ghz.html#) (50 MHz to 40 GHz)
+ 2. [Galil DMC4163](https://www.galil.com/motion-controllers/multi-axis/dmc-41x3) (digital motion controller than can control 4 stepper motors)
 
 The VNA is connected using GPIB using a USB dongle (so VISA commands are used). However, a previous summer student (Carlos) wrote an API, which means that the VISA commands do not need to be directly used everywhere in the code. I have packaged this API as a "wrapper" class called `VNA`.
 
@@ -55,4 +55,14 @@ Please note that the following diagram is meant to give a rough idea, and doesn'
 
 # Dependencies
 
-To be updated.
+The code is written in Python 3 and requires the following libraries:
+
+ * [`pyvisa`](https://pyvisa.readthedocs.io/en/latest/) for communication with the VNA with VISA
+ * [`tkinter`](https://docs.python.org/3/library/tkinter.html) for the creating a graphical user interface (should be installed by default with Python)
+ * [`numpy`](https://numpy.org/install/) for mathematics
+ * [`matplotlib`](https://matplotlib.org/stable/users/installing.html) for showing plots
+ * `gclib` for communicating with the DMC
+
+The last item, `gclib`, requires a two-step installation. After installing the [standard gclib](https://www.galil.com/sw/pub/all/doc/gclib/html/windows.html), the [language support for Python](https://www.galil.com/sw/pub/all/doc/gclib/html/python.html) needs to be installed, which provides the `gclib` Python package.
+
+For the other Python libraries, it may be convient to use a package manager such as [Anaconda](https://www.anaconda.com/products/individual).
