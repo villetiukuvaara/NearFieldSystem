@@ -94,9 +94,14 @@ class VNATab(tk.Frame):
         n = 0
         for k,v in self.sparams.items():
             cb = tk.Checkbutton(config_meas_group, text=k.value, variable=v)
-            cb.grid(row=n%2 + 2,column=(n>1)+1, padx=PADDING,pady=PADDING,sticky=tk.E)
-            v.set(1)
-            self.sp_entries.append(cb)
+            cb.grid(row=n%2 + 2,column=(n>1)+1, padx=PADDING,pady=PADDING,sticky=tk.E)            
+            # Only allow selecting S21
+            if k.value == "S21":
+                self.sp_entries.append(cb)
+                v.set(1)
+            else:
+                v.set(0)
+                cb.config(state=tk.DISABLED)
             n += 1
         n += 2
 
